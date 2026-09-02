@@ -10,12 +10,14 @@ import SwiftData
 
 @main
 struct ichatAIApp: App {
-    @AppStorage("isDarkMode") private var isDarkMode: Bool = false
-    
+    @AppStorage("appTheme") private var appThemeRaw: String = AppTheme.system.rawValue
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .preferredColorScheme(isDarkMode ? .dark : .light)
+                .preferredColorScheme(
+                    AppTheme(rawValue: appThemeRaw) == .dark ? .dark :
+                    AppTheme(rawValue: appThemeRaw) == .light ? .light : nil
+                )
         }
     }
 }
