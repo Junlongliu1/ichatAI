@@ -1,56 +1,69 @@
 import SwiftUI
-import WebKit
 
 struct HomeView: View {
     @State private var isWebLoading = true
-    @State private var canGoBack = false
-    @State private var webViewProxy = WebViewProxy()
+    @State private var selectedService: AIService = .doubao
+    @State private var showServicePicker = false
     
     var body: some View {
         ZStack {
             DoubaoWebView(
                 isLoading: $isWebLoading,
-                canGoBack: $canGoBack,
-                proxy: webViewProxy
+                currentURL: selectedService.url
             )
+            .id(selectedService)
             
             if isWebLoading {
-                LoadingOverlay()
+                LoadingOverlay(serviceName: selectedService.rawValue)
                     .transition(.opacity.animation(.easeInOut(duration: 0.3)))
             }
         }
         .ignoresSafeArea(edges: .bottom)
         .navigationBarHidden(false)
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
+            ToolbarItem(placement: .principal) {
                 Button {
-                    webViewProxy.goBack()
+                    showServicePicker = true
                 } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "chevron.left")
-                            .font(.body.weight(.semibold))
-                        Text("返回")
+                    HStack(spacing: 6) {
+                        Image(systemName: selectedService.icon)
+                            .foregroundStyle(selectedService.color)
+                        Text(selectedService.rawValue)
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                        Image(systemName: "chevron.down")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(.secondary)
                     }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(.ultraThinMaterial, in: Capsule())
                 }
-                .disabled(!canGoBack)
-                .opacity(canGoBack ? 1 : 0)
+            }
+        }
+        .confirmationDialog(
+            "选择 AI 服务",
+            isPresented: $showServicePicker,
+            titleVisibility: .visible
+        ) {
+            ForEach(AIService.allCases) { service in
+                Button {
+                    if service != selectedService {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            selectedService = service
+                        }
+                    }
+                } label: {
+                    Label(service.rawValue, systemImage: service.icon)
+                }
             }
         }
     }
 }
 
-// WebView Proxy (用于从 SwiftUI 调用 UIKit 方法)
-class WebViewProxy {
-    weak var webView: WKWebView?
-    
-    func goBack() {
-        guard let webView, webView.canGoBack else { return }
-        webView.goBack()
-    }
-}
-
 //  加载动画覆盖层
 private struct LoadingOverlay: View {
+    let serviceName: String
     @State private var isAnimating = false
     
     var body: some View {
@@ -70,7 +83,7 @@ private struct LoadingOverlay: View {
                 }
             }
             
-            Text("正在加载豆包...")
+            Text("正在加载 \(serviceName)...")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }

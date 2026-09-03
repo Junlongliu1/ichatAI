@@ -2,7 +2,6 @@
 
 import SwiftUI
 import Charts
-import Combine
 
 struct StorageManagerView: View {
     @StateObject private var cacheManager = WebCacheManager()       //  缓存管理器实例
@@ -96,7 +95,7 @@ struct StorageManagerView: View {
             }
             
             // 无占用的项折叠为一行提示
-            let zeroItems = cacheManager.cacheItems.filter({ $0.size == 0 && $0.size != -1 })
+            let zeroItems = cacheManager.cacheItems.filter({ $0.size == 0 })
             if !zeroItems.isEmpty {
                 HStack {
                     Image(systemName: "circle")
@@ -111,7 +110,6 @@ struct StorageManagerView: View {
         }
     }
     
-    //
     private func cacheRow(for item: CacheItem) -> some View {
         let isSelected = selectedTypes.contains(item.type)
         

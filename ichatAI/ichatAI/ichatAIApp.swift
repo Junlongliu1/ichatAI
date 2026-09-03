@@ -2,7 +2,6 @@
 
 
 import SwiftUI
-import SwiftData
 
 @main
 struct ichatAIApp: App {

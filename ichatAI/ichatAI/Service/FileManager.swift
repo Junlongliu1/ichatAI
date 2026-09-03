@@ -2,7 +2,6 @@
 // 文件管理器
 import SwiftUI
 import Combine
-import UIKit
 
 class DownloadedFileManager: ObservableObject {
     @Published var files: [DownloadedFile] = []                 // 存储所有下载的文件

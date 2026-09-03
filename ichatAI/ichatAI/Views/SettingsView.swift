@@ -22,12 +22,6 @@ enum AppTheme: String, CaseIterable, Identifiable {
 struct SettingsView: View {
     @AppStorage("appTheme") private var appThemeRaw: String = AppTheme.system.rawValue
     
-    //  当前应用主题
-    private var appTheme: AppTheme {
-        get { AppTheme(rawValue: appThemeRaw) ?? .system }
-        set { appThemeRaw = newValue.rawValue }
-    }
-    
     var body: some View {
         NavigationStack {
             List {

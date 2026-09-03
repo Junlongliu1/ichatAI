@@ -10,7 +10,6 @@ struct CacheItem: Identifiable {
     let name: String                // 显示名称
     let type: String                // 类型描述
     var size: Int64                 // 缓存大小（字节），-1 表示驻留内存，0 表示无占用
-    var isShared: Bool = false      // 是否为共享缓存（如 DiskCache 可能被多个类型共享）
     
     var formattedSize: String {
         switch size {
