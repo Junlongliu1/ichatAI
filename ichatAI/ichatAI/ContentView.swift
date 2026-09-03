@@ -7,7 +7,7 @@ struct ContentView: View {
     
     var body: some View {
         TabView(selection: $selectedTab) {
-            DoubaoWebView()
+            HomeView()
                 .tabItem {
                     Label("首页", systemImage: "house.fill")
                 }
