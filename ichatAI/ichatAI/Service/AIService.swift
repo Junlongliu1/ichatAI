@@ -26,32 +26,4 @@ enum AIService: String, CaseIterable, Identifiable {
         case .grok:     return "https://grok.com"
         }
     }
-    
-    var icon: String {
-        switch self {
-        case .doubao:   return "sparkles"
-        case .yiyan:    return "brain.head.profile"
-        case .tongyi:   return "cloud.fill"
-        case .kimi:     return "moon.stars.fill"
-        case .deepseek: return "magnifyingglass.circle.fill"
-        case .yuanbao:  return "yensign.circle.fill"
-        case .chatgpt:  return "message.fill"
-        case .gemini:   return "star.fill"
-        case .grok:     return "bolt.fill"
-        }
-    }
-    
-    var color: Color {
-        switch self {
-        case .doubao:   return .blue
-        case .yiyan:    return .red
-        case .tongyi:   return .orange
-        case .kimi:     return .indigo
-        case .deepseek: return .cyan
-        case .yuanbao:  return .yellow
-        case .chatgpt:  return .green
-        case .gemini:   return .purple
-        case .grok:     return .mint
-        }
-    }
 }

@@ -26,8 +26,6 @@ struct HomeView: View {
                     showServicePicker = true
                 } label: {
                     HStack(spacing: 6) {
-                        Image(systemName: selectedService.icon)
-                            .foregroundStyle(selectedService.color)
                         Text(selectedService.rawValue)
                             .font(.headline)
                             .foregroundStyle(.primary)
@@ -54,7 +52,7 @@ struct HomeView: View {
                         }
                     }
                 } label: {
-                    Label(service.rawValue, systemImage: service.icon)
+                    Text(service.rawValue)
                 }
             }
         }
