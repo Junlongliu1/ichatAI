@@ -1,3 +1,5 @@
+// 版本信息
+
 import Foundation
 
 enum AppInfo {

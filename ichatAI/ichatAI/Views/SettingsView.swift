@@ -1,6 +1,8 @@
+//  设置页面
+
 import SwiftUI
 
-
+//  深色模式枚举
 enum AppTheme: String, CaseIterable, Identifiable {
     case system = "system"
     case light = "light"
@@ -20,6 +22,7 @@ enum AppTheme: String, CaseIterable, Identifiable {
 struct SettingsView: View {
     @AppStorage("appTheme") private var appThemeRaw: String = AppTheme.system.rawValue
     
+    //  当前应用主题
     private var appTheme: AppTheme {
         get { AppTheme(rawValue: appThemeRaw) ?? .system }
         set { appThemeRaw = newValue.rawValue }
@@ -37,7 +40,8 @@ struct SettingsView: View {
         }
     }
     
-    // MARK: - 拆分子视图
+    // 拆分子视图
+    // 外观
     private var appearanceSection: some View {
         Section("外观") {
             Picker(selection: $appThemeRaw) {
@@ -51,6 +55,7 @@ struct SettingsView: View {
         }
     }
     
+    //  开发者
     private var developerSection: some View {
         Section("开发者") {
             NavigationLink(destination: LogViewerView()) {
@@ -62,6 +67,7 @@ struct SettingsView: View {
         }
     }
     
+    //  关于
     private var aboutSection: some View {
         Section("关于 iChatAI") {
             HStack {

@@ -1,12 +1,14 @@
+//  存储管理页面 
+
 import SwiftUI
 import Charts
 import Combine
 
 struct StorageManagerView: View {
-    @StateObject private var cacheManager = WebCacheManager()
-    @State private var selectedTypes: Set<String> = []
-    @State private var showClearConfirm = false
-    @State private var clearSuccess = false
+    @StateObject private var cacheManager = WebCacheManager()       //  缓存管理器实例
+    @State private var selectedTypes: Set<String> = []              //  选中的缓存类型集合
+    @State private var showClearConfirm = false                     //  是否显示清理确认弹窗
+    @State private var clearSuccess = false                         //  是否显示清理成功提示
     
     var body: some View {
         List {
@@ -46,8 +48,7 @@ struct StorageManagerView: View {
         }
     }
     
-    // MARK: - 顶部扇形图区域
-    
+    // 顶部扇形图区域
     private var chartSection: some View {
         Section {
             VStack(spacing: 16) {
@@ -86,30 +87,31 @@ struct StorageManagerView: View {
         }
     }
     
-    // MARK: - 底部可选择清理列表
-    
+    // 底部可选择清理列表
     private var cacheListSection: some View {
         Section {
-            if cacheManager.isLoading && cacheManager.cacheItems.isEmpty {
-                ProgressView()
-                    .frame(maxWidth: .infinity)
-            } else if cacheManager.cacheItems.isEmpty {
-                Text("暂无缓存数据")
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(cacheManager.cacheItems) { item in
-                    cacheRow(for: item)
+            // 有占用的项正常展示
+            ForEach(cacheManager.cacheItems.filter({ $0.size > 0 })) { item in
+                cacheRow(for: item)
+            }
+            
+            // 无占用的项折叠为一行提示
+            let zeroItems = cacheManager.cacheItems.filter({ $0.size == 0 && $0.size != -1 })
+            if !zeroItems.isEmpty {
+                HStack {
+                    Image(systemName: "circle")
+                        .foregroundStyle(.secondary.opacity(0.3))
+                    Text("\(zeroItems.count) 项暂无占用")
+                        .font(.subheadline)
+                        .foregroundStyle(.tertiary)
                 }
             }
         } header: {
             Text("选择要清理的类型")
-        } footer: {
-            Text("⚠️ 清除 Cookie/登录态后需重新登录豆包账号")
-                .font(.caption)
-                .foregroundStyle(.orange)
         }
     }
     
+    //
     private func cacheRow(for item: CacheItem) -> some View {
         let isSelected = selectedTypes.contains(item.type)
         
@@ -145,8 +147,7 @@ struct StorageManagerView: View {
     }
 }
 
-// MARK: - 扇形图组件
-
+// 扇形图组件
 struct StoragePieChart: View {
     let items: [CacheItem]
     
@@ -207,8 +208,7 @@ struct StoragePieChart: View {
     }
 }
 
-// MARK: - 图表配色
-
+// 图表配色
 enum ChartColors {
     private static let palette: [Color] = [
         .blue, .orange, .green, .red, .purple,

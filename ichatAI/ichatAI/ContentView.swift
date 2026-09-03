@@ -1,9 +1,4 @@
-//
 //  ContentView.swift
-//  ichatAI
-//
-//  Created by 龙 on 2026/9/2.
-//
 
 import SwiftUI
 

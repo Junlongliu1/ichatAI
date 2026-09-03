@@ -1,7 +1,9 @@
+// 日志管理器，支持日志轮转和过期清理
+
 import Foundation
 import Combine
 
-// MARK: - 全局快捷打印函数
+// 全局快捷打印函数
 func AppLog(_ message: Any, file: String = #file, function: String = #function, line: Int = #line) {
     let fileName = (file as NSString).lastPathComponent
     let formatter = DateFormatter()
@@ -16,7 +18,7 @@ func AppLog(_ message: Any, file: String = #file, function: String = #function, 
     LogManager.shared.write(formatted)
 }
 
-// MARK: - 日志管理器
+// 日志管理器
 class LogManager: ObservableObject {
     static let shared = LogManager()
     
@@ -42,12 +44,11 @@ class LogManager: ObservableObject {
     
     private init() {
         setupLogFile()
-        cleanOldLogs() // ✅ 需求2：启动时立即清理旧日志
+        cleanOldLogs()
         loadTodayLog()
     }
     
-    // MARK: - 初始化与文件设置
-    
+    // 初始化与文件设置
     private func setupLogFile() {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
@@ -68,8 +69,7 @@ class LogManager: ObservableObject {
         logFileURL = url
     }
     
-    // MARK: - 写入日志
-    
+    // 写入日志
     func write(_ message: String) {
         queue.async { [weak self] in
             guard let self, let url = self.logFileURL else { return }
@@ -96,8 +96,7 @@ class LogManager: ObservableObject {
         }
     }
     
-    // MARK: - 文件轮转
-    
+    // 文件轮转
     private func rollOverLogFile() {
         guard let url = logFileURL else { return }
         
@@ -114,8 +113,7 @@ class LogManager: ObservableObject {
         currentFileSize = 0
     }
     
-    // MARK: - 清理旧日志
-    
+    //  清理旧日志
     private func cleanOldLogs() {
         let cutoffDate = Calendar.current.date(byAdding: .day, value: -maxRetentionDays, to: Date()) ?? Date()
         
@@ -130,8 +128,7 @@ class LogManager: ObservableObject {
         }
     }
     
-    // MARK: - 加载与清空
-    
+    // 加载今天的日志内容到内存
     func loadTodayLog() {
         guard let url = logFileURL,
               let content = try? String(contentsOf: url, encoding: .utf8) else {
@@ -141,6 +138,7 @@ class LogManager: ObservableObject {
         logContent = content
     }
     
+    // 清空今天的日志内容
     func clearTodayLog() {
         guard let url = logFileURL else { return }
         try? "".write(to: url, atomically: true, encoding: .utf8)

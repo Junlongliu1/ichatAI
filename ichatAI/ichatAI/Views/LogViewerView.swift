@@ -1,9 +1,11 @@
+//  日志查看器
+
 import SwiftUI
 
 struct LogViewerView: View {
-    @ObservedObject private var logManager = LogManager.shared
-    @State private var autoScroll = true
-    @State private var showCopySuccess = false
+    @ObservedObject private var logManager = LogManager.shared      // 共享日志管理器实例
+    @State private var autoScroll = true                            // 是否自动滚动到底部
+    @State private var showCopySuccess = false                      // 是否显示复制成功提示
     
     var body: some View {
         VStack(spacing: 0) {
@@ -33,7 +35,7 @@ struct LogViewerView: View {
         }
     }
     
-    // MARK: - 顶部控制栏
+    // 顶部控制栏
     private var controlBar: some View {
         HStack(spacing: 12) {
             // 自动滚动开关
@@ -65,7 +67,7 @@ struct LogViewerView: View {
         .background(Color(.systemBackground))
     }
     
-    // MARK: - 日志内容区
+    // 日志内容区
     private var logContentArea: some View {
         ScrollViewReader { proxy in
             ScrollView {
@@ -93,7 +95,7 @@ struct LogViewerView: View {
         }
     }
     
-    // MARK: - 单行日志视图
+    //  单行日志视图
     private func logLineView(line: String, index: Int) -> some View {
         HStack(alignment: .top, spacing: 6) {
             Text("\(index + 1)")
@@ -110,7 +112,7 @@ struct LogViewerView: View {
         .background(index % 2 == 0 ? Color.clear : Color(.systemGray6).opacity(0.3))
     }
     
-    // MARK: - 空状态视图
+    //  空状态视图
     private var emptyStateView: some View {
         VStack(spacing: 12) {
             Image(systemName: "doc.text.magnifyingglass")
@@ -130,7 +132,7 @@ struct LogViewerView: View {
         .padding(.top, 60)
     }
     
-    // MARK: - 底部操作栏
+    // 底部操作栏
     private var bottomActionBar: some View {
         HStack(spacing: 12) {
             // 复制按钮
@@ -178,7 +180,7 @@ struct LogViewerView: View {
         .background(Color(.systemBackground))
     }
     
-    // MARK: - 复制日志
+    // 复制日志
     private func copyLogs() {
         UIPasteboard.general.string = logManager.logContent
         withAnimation {
@@ -192,7 +194,7 @@ struct LogViewerView: View {
     }
 }
 
-// MARK: - Toast 提示视图
+// Toast 提示视图
 struct ToastView: View {
     let message: String
     
