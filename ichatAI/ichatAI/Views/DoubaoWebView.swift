@@ -65,7 +65,7 @@ struct DoubaoWebView: UIViewRepresentable {
             self._canGoBack = canGoBack
         }
         
-        // ✅ 接收 JS 传来的 Blob Data URI，写入 App 沙盒
+        // 接收 JS 传来的 Blob Data URI，写入 App 沙盒
         func userContentController(
             _ userContentController: WKUserContentController,
             didReceive message: WKScriptMessage
@@ -79,7 +79,7 @@ struct DoubaoWebView: UIViewRepresentable {
         private func saveBlobToAppSandbox(dataUri: String) {
             // 解析 MIME type 和 Base64 数据
             guard let commaIndex = dataUri.firstIndex(of: ",") else {
-                print("⚠️ 无效的 Data URI"); return
+                AppLog("无效的 Data URI"); return
             }
             
             let meta = String(dataUri[..<commaIndex])
@@ -87,7 +87,7 @@ struct DoubaoWebView: UIViewRepresentable {
                 .components(separatedBy: .whitespacesAndNewlines).first ?? ""
             
             guard let fileData = Data(base64Encoded: base64Str) else {
-                print("⚠️ Base64 解码失败"); return
+                AppLog("Base64 解码失败"); return
             }
             
             // 根据 MIME type 生成文件名和后缀
@@ -105,19 +105,19 @@ struct DoubaoWebView: UIViewRepresentable {
             
             do {
                 try fileData.write(to: fileURL)
-                print("✅ 文件已保存到 App 内部: \(fileURL.path)")
-                print("   大小: \(fileData.count / 1024)KB | 类型: \(ext)")
+                AppLog("文件已保存到 App 内部: \(fileURL.path)")
+                AppLog("大小: \(fileData.count / 1024)KB | 类型: \(ext)")
                 
                 // 💡 后续可在此处触发：
                 // - 图片：UIImageWriteToSavedPhotosAlbum / 自定义相册管理器
                 // - PDF/视频：UIDocumentInteractionController 预览/分享
                 // - 通用：展示下载成功 Toast / 更新本地文件列表
             } catch {
-                print("⚠️ 写入沙盒失败: \(error.localizedDescription)")
+                AppLog("写入沙盒失败: \(error.localizedDescription)")
             }
         }
         
-        // ✅ decidePolicyFor：拦截 blob 并注入原生下载 JS
+        // 拦截 blob 并注入原生下载 JS
         func webView(
             _ webView: WKWebView,
             decidePolicyFor navigationAction: WKNavigationAction,
@@ -143,12 +143,12 @@ struct DoubaoWebView: UIViewRepresentable {
             }
             
             UIApplication.shared.open(url) { success in
-                if !success { print("⚠️ 无法打开外部链接: \(url)") }
+                if !success { AppLog("无法打开外部链接: \(url)") }
             }
             decisionHandler(.cancel)
         }
         
-        // ✅ 注入 JS：通过 XHR 读取 blob → postMessage 发送给原生
+        // 注入 JS：通过 XHR 读取 blob → postMessage 发送给原生
         private func injectNativeDownloader(webView: WKWebView, blobUrl: String) {
             let js = """
             (function() {

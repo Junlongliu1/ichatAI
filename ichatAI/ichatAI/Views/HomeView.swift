@@ -39,7 +39,7 @@ struct HomeView: View {
     }
 }
 
-// MARK: - WebView Proxy (用于从 SwiftUI 调用 UIKit 方法)
+// WebView Proxy (用于从 SwiftUI 调用 UIKit 方法)
 class WebViewProxy {
     weak var webView: WKWebView?
     
@@ -49,7 +49,7 @@ class WebViewProxy {
     }
 }
 
-// MARK: - 加载动画覆盖层
+//  加载动画覆盖层
 private struct LoadingOverlay: View {
     @State private var isAnimating = false
     

@@ -14,11 +14,17 @@ struct ContentView: View {
                     }
                     .tag(0)
                 
+                FilesTabView()
+                    .tabItem {
+                        Label("文件", systemImage: "folder.fill")
+                    }
+                    .tag(1)
+                
                 SettingsView()
                     .tabItem {
                         Label("设置", systemImage: "gearshape.fill")
                     }
-                    .tag(1)
+                    .tag(2)
             }
         }
     }
