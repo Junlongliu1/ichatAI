@@ -22,8 +22,14 @@ struct HomeView: View {
         .navigationBarHidden(false)
         .toolbar {
             ToolbarItem(placement: .principal) {
-                Button {
-                    showServicePicker = true
+                // ✅ 使用 Menu 包裹 Picker，实现真正的下拉菜单效果
+                Menu {
+                    Picker("选择 AI 服务", selection: $selectedService) {
+                        ForEach(AIService.allCases) { service in
+                            Text(service.rawValue).tag(service)
+                        }
+                    }
+                    .pickerStyle(.inline)
                 } label: {
                     HStack(spacing: 6) {
                         Text(selectedService.rawValue)
@@ -36,23 +42,6 @@ struct HomeView: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
                     .background(.ultraThinMaterial, in: Capsule())
-                }
-            }
-        }
-        .confirmationDialog(
-            "选择 AI 服务",
-            isPresented: $showServicePicker,
-            titleVisibility: .visible
-        ) {
-            ForEach(AIService.allCases) { service in
-                Button {
-                    if service != selectedService {
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            selectedService = service
-                        }
-                    }
-                } label: {
-                    Text(service.rawValue)
                 }
             }
         }

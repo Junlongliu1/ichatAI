@@ -23,9 +23,13 @@ struct FilesTabView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                
+                if !fileManager.files.isEmpty {
+                    bottomInfoBar
+                }
             }
             .navigationTitle("我的文件")
-            .toolbar { toolbarContent }
+            .toolbar { toolbarContent }   // 仅保留 topBarTrailing 的菜单
             .quickLookPreview($selectedFile)
             .alert("确认清空", isPresented: $showDeleteAllAlert) {
                 Button("取消", role: .cancel) {}
@@ -37,6 +41,28 @@ struct FilesTabView: View {
             } message: {
                 Text("此操作不可恢复，确定要删除所有下载的文件吗？")
             }
+        }
+    }
+    
+    /// 底部文件统计信息栏（安全地显示在 TabBar 上方）
+    private var bottomInfoBar: some View {
+        HStack {
+            Text("\(fileManager.filteredFiles.count) / \(fileManager.files.count) 个文件")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            
+            Spacer()
+            
+            let totalSize = fileManager.filteredFiles.reduce(Int64(0)) { $0 + $1.fileSize }
+            Text(formatTotalSize(totalSize))
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .top) {
+            Divider()
         }
     }
     
@@ -166,20 +192,6 @@ struct FilesTabView: View {
                     Image(systemName: "ellipsis.circle.fill")
                         .symbolRenderingMode(.hierarchical)
                 }
-            }
-            
-            ToolbarItem(placement: .bottomBar) {
-                HStack {
-                    Text("\(fileManager.filteredFiles.count) / \(fileManager.files.count) 个文件")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    let totalSize = fileManager.filteredFiles.reduce(Int64(0)) { $0 + $1.fileSize }
-                    Text(formatTotalSize(totalSize))
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 16)
             }
         }
     }
