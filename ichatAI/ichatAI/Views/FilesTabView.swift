@@ -4,43 +4,41 @@ import SwiftUI
 import QuickLook
 
 struct FilesTabView: View {
-    @StateObject private var fileManager = DownloadedFileManager()
-    @State private var selectedFile: URL?
-    @State private var showDeleteAllAlert = false
-    
+    @StateObject private var fileManager = DownloadedFileManager()      // 下载文件管理器
+    @State private var selectedFile: URL?                               // 当前选中的文件 URL，用于 QuickLook 预览
+    @State private var showDeleteAllAlert = false                       // 是否显示清空所有文件的确认弹窗
+
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                if !fileManager.files.isEmpty {
-                    categorySelector
-                }
-                
-                Group {
-                    if fileManager.filteredFiles.isEmpty {
-                        emptyStateView
-                    } else {
-                        fileList
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                
-                if !fileManager.files.isEmpty {
-                    bottomInfoBar
+        VStack(spacing: 0) {
+            if !fileManager.files.isEmpty {
+                categorySelector
+            }
+
+            Group {
+                if fileManager.filteredFiles.isEmpty {
+                    emptyStateView
+                } else {
+                    fileList
                 }
             }
-            .navigationTitle("我的文件")
-            .toolbar { toolbarContent }   // 仅保留 topBarTrailing 的菜单
-            .quickLookPreview($selectedFile)
-            .alert("确认清空", isPresented: $showDeleteAllAlert) {
-                Button("取消", role: .cancel) {}
-                Button("清空所有文件", role: .destructive) {
-                    withAnimation(.spring(response: 0.4)) {
-                        fileManager.deleteAllFiles()
-                    }
-                }
-            } message: {
-                Text("此操作不可恢复，确定要删除所有下载的文件吗？")
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            if !fileManager.files.isEmpty {
+                bottomInfoBar
             }
+        }
+        .navigationTitle("我的文件")
+        .toolbar { toolbarContent }
+        .quickLookPreview($selectedFile)
+        .alert("确认清空", isPresented: $showDeleteAllAlert) {
+            Button("取消", role: .cancel) {}
+            Button("清空所有文件", role: .destructive) {
+                withAnimation(.spring(response: 0.4)) {
+                    fileManager.deleteAllFiles()
+                }
+            }
+        } message: {
+            Text("此操作不可恢复，确定要删除所有下载的文件吗？")
         }
     }
     
@@ -70,8 +68,8 @@ struct FilesTabView: View {
     private var categorySelector: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 10) {
-                ForEach(DownloadedFileManager.FileCategory.allCases) { category in
-                    CategoryChip(
+                ForEach(FileCategory.allCases) { category in
+                        CategoryChip(
                         category: category,
                         isSelected: fileManager.selectedCategory == category,
                         count: fileManager.count(for: category)
@@ -196,6 +194,7 @@ struct FilesTabView: View {
         }
     }
     
+    // 格式化总文件大小
     private func formatTotalSize(_ size: Int64) -> String {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
@@ -203,10 +202,9 @@ struct FilesTabView: View {
         return "共 \(formatter.string(fromByteCount: size))"
     }
 }
-
 // 分类标签组件
 private struct CategoryChip: View {
-    let category: DownloadedFileManager.FileCategory
+    let category: FileCategory
     let isSelected: Bool
     let count: Int
     
@@ -239,22 +237,12 @@ private struct CategoryChip: View {
 
 // 图片网格项
 private struct ImageGridItem: View {
-    let file: DownloadedFileManager.DownloadedFile
-    @State private var thumbnail: UIImage?
+    let file: DownloadedFile
     
     var body: some View {
         ZStack(alignment: .bottomLeading) {
-            Group {
-                if let image = thumbnail {
-                    Image(uiImage: image)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                } else {
-                    Color.secondary.opacity(0.1)
-                        .overlay(ProgressView().scaleEffect(0.7))
-                }
-            }
-            .frame(minHeight: 100)
+            FileThumbnailView(file: file, width: nil, height: 100)
+                .frame(maxWidth: .infinity)
             .clipped()
             
             LinearGradient(colors: [.clear, .black.opacity(0.5)], startPoint: .top, endPoint: .bottom)
@@ -268,22 +256,12 @@ private struct ImageGridItem: View {
                 .padding(.bottom, 4)
         }
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .task(id: file.fileURL) { await loadThumbnail() }
-    }
-    
-    @MainActor
-    private func loadThumbnail() async {
-        let url = file.fileURL
-        thumbnail = await Task.detached(priority: .utility) {
-            UIImage(contentsOfFile: url.path)
-        }.value
     }
 }
 
 // 文件行视图
 private struct FileRowView: View {
-    let file: DownloadedFileManager.DownloadedFile
-    @State private var thumbnailImage: UIImage?
+    let file: DownloadedFile
     
     var body: some View {
         HStack(spacing: 14) {
@@ -298,26 +276,13 @@ private struct FileRowView: View {
                 .foregroundStyle(.quaternary)
         }
         .padding(.vertical, 8)
-        .task(id: file.fileURL) {
-            await loadThumbnail()
-        }
     }
     
     // 缩略图 / 图标
     @ViewBuilder
     private var thumbnailView: some View {
         if file.fileType == .image {
-            Group {
-                if let image = thumbnailImage {
-                    Image(uiImage: image)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                } else {
-                    ProgressView()
-                        .scaleEffect(0.6)
-                }
-            }
-            .frame(width: 56, height: 56)
+            FileThumbnailView(file: file, width: 56, height: 56)
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -325,21 +290,7 @@ private struct FileRowView: View {
                     .foregroundStyle(.black.opacity(0.08))
             )
         } else {
-            ZStack {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [file.fileType.color.opacity(0.15), file.fileType.color.opacity(0.05)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                
-                Image(systemName: file.fileType.icon)
-                    .font(.title3.weight(.medium))
-                    .foregroundStyle(file.fileType.color)
-            }
-            .frame(width: 56, height: 56)
+            FileThumbnailView(file: file, width: 56, height: 56)
         }
     }
     
@@ -369,6 +320,7 @@ private struct FileRowView: View {
         }
     }
     
+    // 显示名称（去掉前缀和时间戳）
     private var displayName: String {
         // 去掉 doubao_ 前缀和时间戳，显示更友好的名称
         let name = file.fileName
@@ -384,6 +336,7 @@ private struct FileRowView: View {
         return name
     }
     
+    // 文件类型徽章
     private var fileTypeBadge: some View {
         Text(file.fileType.label)
             .font(.system(size: 9, weight: .semibold))
@@ -393,18 +346,7 @@ private struct FileRowView: View {
             .background(file.fileType.color.opacity(0.1), in: Capsule())
     }
     
-    // Helpers
-    @MainActor
-    private func loadThumbnail() async {
-        guard file.fileType == .image else { return }
-        // 后台线程解码，避免阻塞 UI
-        let url = file.fileURL
-        let image = await Task.detached(priority: .utility) {
-            UIImage(contentsOfFile: url.path)
-        }.value
-        thumbnailImage = image
-    }
-    
+    // 格式化文件大小
     private func formatFileSize(_ size: Int64) -> String {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
@@ -412,22 +354,11 @@ private struct FileRowView: View {
         return formatter.string(fromByteCount: size)
     }
     
+    // 格式化日期为相对时间字符串
     private func formatDate(_ date: Date) -> String {
         let formatter = RelativeDateTimeFormatter()
         formatter.locale = Locale(identifier: "zh_CN")
         formatter.unitsStyle = .abbreviated
         return formatter.localizedString(for: date, relativeTo: Date())
-    }
-}
-
-// FileType 扩展
-extension DownloadedFileManager.DownloadedFile.FileType {
-    var label: String {
-        switch self {
-        case .image: return "IMG"
-        case .pdf:   return "PDF"
-        case .video: return "VID"
-        case .other: return "FILE"
-        }
     }
 }

@@ -1,14 +1,18 @@
+// AI加载视图
+
 import SwiftUI
 import WebKit
 
-struct DoubaoWebView: UIViewRepresentable {
-    @Binding var isLoading: Bool
-    let currentURL: String
+struct AIWebView: UIViewRepresentable {
+    @Binding var isLoading: Bool    // 是否正在加载网页
+    let currentURL: String          // 当前网页的URL
     
+    // 创建协调器
     func makeCoordinator() -> Coordinator {
         Coordinator(isLoading: $isLoading)
     }
     
+    // 创建WKWebView
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         
@@ -34,6 +38,7 @@ struct DoubaoWebView: UIViewRepresentable {
         return webView
     }
     
+    // 更新WKWebView
     func updateUIView(_ uiView: WKWebView, context: Context) {
         guard currentURL != context.coordinator.currentServiceURL else { return }
         
@@ -48,12 +53,13 @@ struct DoubaoWebView: UIViewRepresentable {
         }
     }
     
+    // 销毁WKWebView
     static func dismantleUIView(_ uiView: WKWebView, coordinator: Coordinator) {
         uiView.configuration.userContentController
             .removeScriptMessageHandler(forName: Coordinator.downloadMessageName)
     }
     
-    // MARK: - Coordinator
+    // Coordinator
     class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         @Binding var isLoading: Bool
         var currentServiceURL: String = ""
@@ -64,6 +70,7 @@ struct DoubaoWebView: UIViewRepresentable {
             self._isLoading = isLoading
         }
         
+        // 处理来自网页的消息
         func userContentController(
             _ userContentController: WKUserContentController,
             didReceive message: WKScriptMessage
@@ -73,6 +80,7 @@ struct DoubaoWebView: UIViewRepresentable {
             saveBlobToAppSandbox(dataUri: dataUri)
         }
         
+        // 将Blob数据保存到应用沙盒
         private func saveBlobToAppSandbox(dataUri: String) {
             guard let commaIndex = dataUri.firstIndex(of: ",") else {
                 AppLog("无效的 Data URI"); return
@@ -107,6 +115,7 @@ struct DoubaoWebView: UIViewRepresentable {
             }
         }
         
+        // WKNavigationDelegate 方法，处理网页导航
         func webView(
             _ webView: WKWebView,
             decidePolicyFor navigationAction: WKNavigationAction,
@@ -126,6 +135,7 @@ struct DoubaoWebView: UIViewRepresentable {
             decisionHandler(.allow)
         }
         
+        // 注入JavaScript代码以下载Blob数据
         private func injectNativeDownloader(webView: WKWebView, blobUrl: String) {
             let js = """
             (function() {
@@ -149,20 +159,24 @@ struct DoubaoWebView: UIViewRepresentable {
             webView.evaluateJavaScript(js, completionHandler: nil)
         }
         
+        // WKNavigationDelegate 方法，处理网页加载状态
         func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
             DispatchQueue.main.async { self.isLoading = true }
         }
         
+        // WKNavigationDelegate 方法，处理网页加载完成状态
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             DispatchQueue.main.async {
                 self.isLoading = false
             }
         }
         
+        // WKNavigationDelegate 方法，处理网页加载失败状态
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
             DispatchQueue.main.async { self.isLoading = false }
         }
         
+        // WKNavigationDelegate 方法，处理网页预加载失败状态
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
             DispatchQueue.main.async { self.isLoading = false }
         }

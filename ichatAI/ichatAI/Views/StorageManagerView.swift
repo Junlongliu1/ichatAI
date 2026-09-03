@@ -19,7 +19,7 @@ struct StorageManagerView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button("清理选中") {
+                Button("清理") {
                     showClearConfirm = true
                 }
                 .disabled(selectedTypes.isEmpty || cacheManager.isLoading)
@@ -110,6 +110,7 @@ struct StorageManagerView: View {
         }
     }
     
+    // 缓存类型行视图
     private func cacheRow(for item: CacheItem) -> some View {
         let isSelected = selectedTypes.contains(item.type)
         

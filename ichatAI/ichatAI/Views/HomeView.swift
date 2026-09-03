@@ -1,20 +1,25 @@
 import SwiftUI
 
 struct HomeView: View {
+    @StateObject private var serviceManager = AIServiceManager.shared
+    @State private var selectedService: AIService
     @State private var isWebLoading = true
-    @State private var selectedService: AIService = .doubao
-    @State private var showServicePicker = false
+    
+    init() {
+        // 初始化时使用默认服务
+        _selectedService = State(initialValue: AIServiceManager.shared.defaultService)
+    }
     
     var body: some View {
         ZStack {
-            DoubaoWebView(
+            AIWebView(
                 isLoading: $isWebLoading,
                 currentURL: selectedService.url
             )
-            .id(selectedService)
+            .id(selectedService.id)
             
             if isWebLoading {
-                LoadingOverlay(serviceName: selectedService.rawValue)
+                LoadingOverlay(serviceName: selectedService.name)
                     .transition(.opacity.animation(.easeInOut(duration: 0.3)))
             }
         }
@@ -22,17 +27,16 @@ struct HomeView: View {
         .navigationBarHidden(false)
         .toolbar {
             ToolbarItem(placement: .principal) {
-                // ✅ 使用 Menu 包裹 Picker，实现真正的下拉菜单效果
                 Menu {
                     Picker("选择 AI 服务", selection: $selectedService) {
-                        ForEach(AIService.allCases) { service in
-                            Text(service.rawValue).tag(service)
+                        ForEach(serviceManager.visibleServices) { service in
+                            Text(service.name).tag(service)
                         }
                     }
                     .pickerStyle(.inline)
                 } label: {
                     HStack(spacing: 6) {
-                        Text(selectedService.rawValue)
+                        Text(selectedService.name)
                             .font(.headline)
                             .foregroundStyle(.primary)
                         Image(systemName: "chevron.down")
@@ -43,6 +47,12 @@ struct HomeView: View {
                     .padding(.vertical, 6)
                     .background(.ultraThinMaterial, in: Capsule())
                 }
+            }
+        }
+        .onAppear {
+            // 确保选中项始终在可见列表中
+            if !serviceManager.visibleServices.contains(selectedService) {
+                selectedService = serviceManager.defaultService
             }
         }
     }

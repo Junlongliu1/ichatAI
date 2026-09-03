@@ -1,76 +1,11 @@
 // FileManager.swift
 // 文件管理器
-import SwiftUI
+import Foundation
 import Combine
 
 class DownloadedFileManager: ObservableObject {
-    @Published var files: [DownloadedFile] = []                 // 存储所有下载的文件
-    @Published var selectedCategory: FileCategory = .all        // 当前选中的分类
-    
-    //  文件分类枚举
-    enum FileCategory: String, CaseIterable, Identifiable {
-        case all = "全部"
-        case image = "图片"
-        case document = "文档"
-        case video = "视频"
-        case other = "其他"
-        
-        var id: String { rawValue }
-        
-        var icon: String {
-            switch self {
-            case .all: return "square.grid.2x2.fill"
-            case .image: return "photo.fill"
-            case .document: return "doc.fill"
-            case .video: return "video.fill"
-            case .other: return "folder.fill"
-            }
-        }
-    }
-    
-    //接受 JS 传来的 Blob Data URI，写入 App 沙盒
-    struct DownloadedFile: Identifiable {
-        let id = UUID()
-        let fileName: String
-        let fileURL: URL
-        let fileType: FileType
-        let fileSize: Int64
-        let createdAt: Date
-        
-        enum FileType {
-            case image
-            case pdf
-            case video
-            case other
-            
-            var icon: String {
-                switch self {
-                case .image: return "photo"
-                case .pdf: return "doc.richtext"
-                case .video: return "video"
-                case .other: return "doc"
-                }
-            }
-            
-            var color: Color {
-                switch self {
-                case .image: return .blue
-                case .pdf: return .red
-                case .video: return .purple
-                case .other: return .gray
-                }
-            }
-            
-            var category: FileCategory {
-                switch self {
-                case .image: return .image
-                case .pdf: return .document
-                case .video: return .video
-                case .other: return .other
-                }
-            }
-        }
-    }
+    @Published var files: [DownloadedFile] = []             // 下载文件列表
+    @Published var selectedCategory: FileCategory = .all    // 当前选中的文件分类
     
     // 根据当前分类返回过滤后的文件
     var filteredFiles: [DownloadedFile] {
@@ -107,7 +42,7 @@ class DownloadedFileManager: ObservableObject {
                     let fileSize = attributes?[.size] as? Int64 ?? 0
                     let createdAt = attributes?[.creationDate] as? Date ?? Date()
                     
-                    let fileType: DownloadedFile.FileType
+                    let fileType: FileType
                     let ext = url.pathExtension.lowercased()
                     if ["png", "jpg", "jpeg", "webp"].contains(ext) {
                         fileType = .image

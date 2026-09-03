@@ -23,15 +23,14 @@ struct SettingsView: View {
     @AppStorage("appTheme") private var appThemeRaw: String = AppTheme.system.rawValue
     
     var body: some View {
-        NavigationStack {
-            List {
-                appearanceSection
-                developerSection
-                aboutSection
-            }
-            .listStyle(.insetGrouped)
-            .navigationTitle("设置")
+        List {
+            appearanceSection
+            aiServiceSection
+            developerSection
+            aboutSection
         }
+        .listStyle(.insetGrouped)
+        .navigationTitle("设置")
     }
     
     // 拆分子视图
@@ -45,6 +44,15 @@ struct SettingsView: View {
                 }
             } label: {
                 Label("显示模式", systemImage: "paintbrush.fill")
+            }
+        }
+    }
+    
+    //  AI 服务
+    private var aiServiceSection: some View {
+        Section("AI 服务") {
+            NavigationLink(destination: AIServiceManageView()) {
+                Label("AI 服务管理", systemImage: "brain.head.profile")
             }
         }
     }
