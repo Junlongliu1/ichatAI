@@ -1,11 +1,18 @@
 import SwiftUI
+import WebKit
 
 struct HomeView: View {
     @State private var isWebLoading = true
+    @State private var canGoBack = false
+    @State private var webViewProxy = WebViewProxy()
     
     var body: some View {
         ZStack {
-            DoubaoWebView(isLoading: $isWebLoading)
+            DoubaoWebView(
+                isLoading: $isWebLoading,
+                canGoBack: $canGoBack,
+                proxy: webViewProxy
+            )
             
             if isWebLoading {
                 LoadingOverlay()
@@ -13,11 +20,36 @@ struct HomeView: View {
             }
         }
         .ignoresSafeArea(edges: .bottom)
-        .navigationBarHidden(true)
+        .navigationBarHidden(false)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    webViewProxy.goBack()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                            .font(.body.weight(.semibold))
+                        Text("返回")
+                    }
+                }
+                .disabled(!canGoBack)
+                .opacity(canGoBack ? 1 : 0)
+            }
+        }
     }
 }
 
-// 加载动画覆盖层
+// MARK: - WebView Proxy (用于从 SwiftUI 调用 UIKit 方法)
+class WebViewProxy {
+    weak var webView: WKWebView?
+    
+    func goBack() {
+        guard let webView, webView.canGoBack else { return }
+        webView.goBack()
+    }
+}
+
+// MARK: - 加载动画覆盖层
 private struct LoadingOverlay: View {
     @State private var isAnimating = false
     
@@ -44,8 +76,6 @@ private struct LoadingOverlay: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.ultraThinMaterial)
-        .onAppear {
-            isAnimating = true
-        }
+        .onAppear { isAnimating = true }
     }
 }
