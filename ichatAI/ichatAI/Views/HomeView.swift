@@ -27,6 +27,7 @@ struct HomeView: View {
                     .transition(.opacity.animation(.easeInOut(duration: 0.3)))
             }
 
+            // 展开菜单时的透明遮罩：点击空白处收起
             if isMenuExpanded {
                 Color.clear
                     .contentShape(Rectangle())
@@ -44,20 +45,16 @@ struct HomeView: View {
                 services: serviceManager.visibleServices,
                 selectedService: $selectedService,
                 isExpanded: $isMenuExpanded,
-                onNavigate: { target in
-                    withAnimation(.spring(response: 0.25)) { isMenuExpanded = false }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                        activeSheet = target
-                    }
-                }
+                onNavigate: handleNavigate
             )
-            .padding(.trailing, 12)
+            .padding(.trailing, Metric.fabTrailingPadding)
         }
         .navigationBarHidden(true)
         .onAppear {
-            if !serviceManager.visibleServices.contains(selectedService) {
-                selectedService = serviceManager.defaultService
-            }
+            validateSelectedService()
+        }
+        .onChange(of: serviceManager.visibleServices.map(\.id)) { _, _ in
+            validateSelectedService()
         }
         .fullScreenCover(item: $activeSheet) { sheet in
             FullScreenPageContainer(sheet: sheet) {
@@ -65,6 +62,35 @@ struct HomeView: View {
             }
         }
     }
+
+    // MARK: - Actions
+    private func handleNavigate(to target: ActiveSheet) {
+        withAnimation(.spring(response: 0.25)) { isMenuExpanded = false }
+        // 等菜单收起动画进行到一半再弹全屏页，避免两层过渡打架
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            activeSheet = target
+        }
+    }
+
+    /// 当当前选中的服务被禁用/删除时，自动回退到可见服务
+    private func validateSelectedService() {
+        let visible = serviceManager.visibleServices
+        guard !visible.contains(where: { $0.id == selectedService.id }) else { return }
+        selectedService = visible.first ?? serviceManager.defaultService
+    }
+}
+
+// MARK: - 全局尺寸常量
+private enum Metric {
+    static let fabSize: CGFloat = 48
+    static let fabTrailingPadding: CGFloat = 12
+    static let menuGap: CGFloat = 10
+    static let menuWidth: CGFloat = 200
+    static let menuCornerRadius: CGFloat = 16
+    static let rowHeight: CGFloat = 34
+    static let rowSpacing: CGFloat = 2
+    static let listVerticalPadding: CGFloat = 12
+    static let maxVisibleRows = 5
 }
 
 // MARK: - 全屏页面容器
@@ -74,11 +100,13 @@ private struct FullScreenPageContainer: View {
 
     var body: some View {
         NavigationStack {
-            switch sheet {
-            case .files:
-                FilesTabView(onDismiss: onDismiss)
-            case .settings:
-                SettingsView(onDismiss: onDismiss)
+            Group {
+                switch sheet {
+                case .files:
+                    FilesTabView(onDismiss: onDismiss)
+                case .settings:
+                    SettingsView(onDismiss: onDismiss)
+                }
             }
         }
     }
@@ -97,7 +125,10 @@ private struct LoadingOverlay: View {
                         .fill(Color.accentColor)
                         .frame(width: 10, height: 10)
                         .scaleEffect(isAnimating ? 1.4 : 0.8)
-                        .animation(.easeInOut(duration: 0.6).repeatForever().delay(Double(index) * 0.15), value: isAnimating)
+                        .animation(
+                            .easeInOut(duration: 0.6).repeatForever().delay(Double(index) * 0.15),
+                            value: isAnimating
+                        )
                 }
             }
             Text("正在加载 \(serviceName)...")
@@ -117,31 +148,16 @@ private struct FloatingActionMenu: View {
     @Binding var isExpanded: Bool
     let onNavigate: (HomeView.ActiveSheet) -> Void
 
-    private let buttonSize: CGFloat = 48
-    private let menuGap: CGFloat = 10
-    private let menuWidth: CGFloat = 200
-    private let rowHeight: CGFloat = 38
-    private let maxVisibleRows = 5
-
-    private var servicesAreaHeight: CGFloat {
-        let rows = max(1, min(services.count, maxVisibleRows))
-        return CGFloat(rows) * rowHeight + 12
-    }
-
     var body: some View {
         triggerButton
             .overlay(alignment: .topTrailing) {
                 if isExpanded {
                     compactMenuContent
-                        .offset(y: buttonSize + menuGap)
-                        .transition(.asymmetric(
-                            insertion: .scale(scale: 0.85, anchor: .topTrailing)
+                        .offset(y: Metric.fabSize + Metric.menuGap)
+                        .transition(
+                            .scale(scale: 0.9, anchor: .topTrailing)
                                 .combined(with: .opacity)
-                                .animation(.spring(response: 0.4, dampingFraction: 0.78)),
-                            removal: .scale(scale: 0.92, anchor: .topTrailing)
-                                .combined(with: .opacity)
-                                .animation(.easeOut(duration: 0.15))
-                        ))
+                        )
                 }
             }
     }
@@ -163,16 +179,16 @@ private struct FloatingActionMenu: View {
                             endPoint: .bottomTrailing
                         )
                     )
-                    .frame(width: buttonSize, height: buttonSize)
 
                 Circle()
                     .stroke(Color.white.opacity(0.25), lineWidth: 0.5)
-                    .frame(width: buttonSize, height: buttonSize)
 
                 Text(String(selectedService.name.prefix(1)))
                     .font(.title3.weight(.bold))
                     .foregroundStyle(.white)
+                    .contentTransition(.numericText())
             }
+            .frame(width: Metric.fabSize, height: Metric.fabSize)
             .shadow(color: Color.accentColor.opacity(0.35), radius: 10, y: 4)
             .shadow(color: .black.opacity(0.12), radius: 4, y: 2)
         }
@@ -183,7 +199,7 @@ private struct FloatingActionMenu: View {
     // MARK: 展开面板
     private var compactMenuContent: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // ── 顶部功能栏 ──
+            // 顶部功能栏：文件 / 设置
             HStack(spacing: 0) {
                 CompactMenuIconButton(icon: "folder.fill", title: "文件") {
                     onNavigate(.files)
@@ -195,38 +211,49 @@ private struct FloatingActionMenu: View {
             }
             .padding(.vertical, 10)
 
-            Divider().padding(.horizontal, 12).opacity(0.25)
+            // AI 服务列表（无可显示服务时整块隐藏）
+            if !services.isEmpty {
+                Divider().padding(.horizontal, 12).opacity(0.25)
 
-            // ── AI 服务列表 ──
-            ScrollView(.vertical, showsIndicators: services.count > maxVisibleRows) {
-                VStack(alignment: .leading, spacing: 2) {
-                    ForEach(services) { service in
-                        CompactServiceRow(
-                            name: service.name,
-                            isSelected: selectedService.id == service.id
-                        )
-                        .onTapGesture {
-                            UISelectionFeedbackGenerator().selectionChanged()
-                            selectedService = service
-                            withAnimation(.spring(response: 0.3)) { isExpanded = false }
+                ScrollView(.vertical, showsIndicators: services.count > Metric.maxVisibleRows) {
+                    VStack(alignment: .leading, spacing: Metric.rowSpacing) {
+                        ForEach(services) { service in
+                            CompactServiceRow(
+                                name: service.name,
+                                isSelected: selectedService.id == service.id
+                            )
+                            .onTapGesture {
+                                UISelectionFeedbackGenerator().selectionChanged()
+                                selectedService = service
+                                withAnimation(.spring(response: 0.3)) { isExpanded = false }
+                            }
                         }
                     }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, Metric.listVerticalPadding / 2)
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
+                .frame(height: servicesAreaHeight)
             }
-            .frame(height: servicesAreaHeight)
         }
-        .frame(width: menuWidth)
+        .frame(width: Metric.menuWidth)
         .background(
             .ultraThinMaterial,
-            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+            in: RoundedRectangle(cornerRadius: Metric.menuCornerRadius, style: .continuous)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: Metric.menuCornerRadius, style: .continuous)
                 .stroke(Color.white.opacity(0.2), lineWidth: 0.5)
         )
         .shadow(color: .black.opacity(0.15), radius: 16, y: 8)
+    }
+
+    /// 服务列表的精确高度：行数 × 行高 + 行间距 + 上下内边距
+    private var servicesAreaHeight: CGFloat {
+        let rows = min(services.count, Metric.maxVisibleRows)
+        guard rows > 0 else { return 0 }
+        return CGFloat(rows) * Metric.rowHeight
+            + CGFloat(rows - 1) * Metric.rowSpacing
+            + Metric.listVerticalPadding
     }
 }
 
@@ -249,8 +276,7 @@ private struct CompactServiceRow: View {
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: Metric.rowHeight, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(isSelected ? Color.accentColor.opacity(0.9) : Color.clear)
