@@ -20,6 +20,7 @@ enum AppTheme: String, CaseIterable, Identifiable {
 }
 
 struct SettingsView: View {
+    let onDismiss: () -> Void
     @AppStorage("appTheme") private var appThemeRaw: String = AppTheme.system.rawValue
     
     var body: some View {
@@ -31,8 +32,19 @@ struct SettingsView: View {
         }
         .listStyle(.insetGrouped)
         .navigationTitle("设置")
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button(action: onDismiss) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                            .font(.body.weight(.semibold))
+                        Text("返回")
+                    }
+                }
+            }
+        }
     }
-    
     // 拆分子视图
     // 外观
     private var appearanceSection: some View {

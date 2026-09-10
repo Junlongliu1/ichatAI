@@ -4,38 +4,57 @@ import SwiftUI
 import QuickLook
 
 struct FilesTabView: View {
+    let onDismiss: () -> Void
     @StateObject private var fileManager = DownloadedFileManager()      // 下载文件管理器
     @State private var selectedFile: URL?                               // 当前选中的文件 URL，用于 QuickLook 预览
     @State private var showDeleteAllAlert = false                       // 是否显示清空所有文件的确认弹窗
 
     var body: some View {
         VStack(spacing: 0) {
-            if !fileManager.files.isEmpty {
-                categorySelector
-            }
-
+            if !fileManager.files.isEmpty { categorySelector }
             Group {
-                if fileManager.filteredFiles.isEmpty {
-                    emptyStateView
-                } else {
-                    fileList
-                }
+                if fileManager.filteredFiles.isEmpty { emptyStateView }
+                else { fileList }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            if !fileManager.files.isEmpty {
-                bottomInfoBar
-            }
+            if !fileManager.files.isEmpty { bottomInfoBar }
         }
         .navigationTitle("我的文件")
-        .toolbar { toolbarContent }
+        .navigationBarBackButtonHidden(true) // ✅ 隐藏系统默认返回
+        .toolbar {
+            // ✅ 左侧返回按钮
+            ToolbarItem(placement: .topBarLeading) {
+                Button(action: onDismiss) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                            .font(.body.weight(.semibold))
+                        Text("返回")
+                    }
+                }
+            }
+            // ✅ 右侧原有菜单保持不变
+            if !fileManager.files.isEmpty {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button { fileManager.loadFiles() } label: {
+                            Label("刷新", systemImage: "arrow.clockwise")
+                        }
+                        Divider()
+                        Button(role: .destructive) { showDeleteAllAlert = true } label: {
+                            Label("清空所有文件", systemImage: "trash.fill")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle.fill")
+                            .symbolRenderingMode(.hierarchical)
+                    }
+                }
+            }
+        }
         .quickLookPreview($selectedFile)
         .alert("确认清空", isPresented: $showDeleteAllAlert) {
             Button("取消", role: .cancel) {}
             Button("清空所有文件", role: .destructive) {
-                withAnimation(.spring(response: 0.4)) {
-                    fileManager.deleteAllFiles()
-                }
+                withAnimation(.spring(response: 0.4)) { fileManager.deleteAllFiles() }
             }
         } message: {
             Text("此操作不可恢复，确定要删除所有下载的文件吗？")

@@ -5,37 +5,73 @@ struct HomeView: View {
     @StateObject private var serviceManager = AIServiceManager.shared
     @State private var selectedService: AIService
     @State private var isWebLoading = true
-    
+    @State private var isMenuExpanded = false
+    @State private var activeSheet: ActiveSheet?
+
+    enum ActiveSheet: Identifiable {
+        case files, settings
+        var id: Int { hashValue }
+    }
+
     init() {
         _selectedService = State(initialValue: AIServiceManager.shared.defaultService)
     }
-    
+
     var body: some View {
         ZStack {
-            // WebView 主体
-            AIWebView(
-                isLoading: $isWebLoading,
-                currentURL: selectedService.url
-            )
-            .id(selectedService.id)
-            
-            // 加载动画
+            AIWebView(isLoading: $isWebLoading, currentURL: selectedService.url)
+                .id(selectedService.id)
+
             if isWebLoading {
                 LoadingOverlay(serviceName: selectedService.name)
                     .transition(.opacity.animation(.easeInOut(duration: 0.3)))
             }
-            
-            // ✅ 左上角悬浮菜单按钮
-            FloatingActionMenu(
-                services: serviceManager.visibleServices,
-                selectedService: $selectedService
-            )
+
+            VStack {
+                Spacer()
+                FloatingActionMenu(
+                    services: serviceManager.visibleServices,
+                    selectedService: $selectedService,
+                    isExpanded: $isMenuExpanded,
+                    onNavigate: { target in
+                        withAnimation(.spring(response: 0.25)) { isMenuExpanded = false }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                            activeSheet = target
+                        }
+                    }
+                )
+                Spacer()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+            .padding(.trailing, 12)
+            .ignoresSafeArea(edges: [.top, .bottom])
         }
-        .ignoresSafeArea(edges: .bottom)
         .navigationBarHidden(true)
         .onAppear {
             if !serviceManager.visibleServices.contains(selectedService) {
                 selectedService = serviceManager.defaultService
+            }
+        }
+        .fullScreenCover(item: $activeSheet) { sheet in
+            FullScreenPageContainer(sheet: sheet) {
+                activeSheet = nil
+            }
+        }
+    }
+}
+
+// MARK: - 全屏页面容器
+private struct FullScreenPageContainer: View {
+    let sheet: HomeView.ActiveSheet
+    let onDismiss: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            switch sheet {
+            case .files:
+                FilesTabView(onDismiss: onDismiss)
+            case .settings:
+                SettingsView(onDismiss: onDismiss)
             }
         }
     }
@@ -54,10 +90,7 @@ private struct LoadingOverlay: View {
                         .fill(Color.accentColor)
                         .frame(width: 10, height: 10)
                         .scaleEffect(isAnimating ? 1.4 : 0.8)
-                        .animation(
-                            .easeInOut(duration: 0.6).repeatForever().delay(Double(index) * 0.15),
-                            value: isAnimating
-                        )
+                        .animation(.easeInOut(duration: 0.6).repeatForever().delay(Double(index) * 0.15), value: isAnimating)
                 }
             }
             Text("正在加载 \(serviceName)...")
@@ -70,152 +103,152 @@ private struct LoadingOverlay: View {
     }
 }
 
-// MARK: - 左上角悬浮菜单组件
+// MARK: - 紧凑型贴边下拉悬浮菜单（排版修复版）
 private struct FloatingActionMenu: View {
     let services: [AIService]
     @Binding var selectedService: AIService
-    @State private var isExpanded = false
-    @Environment(\.dismiss) private var dismiss // 用于安全关闭
+    @Binding var isExpanded: Bool
+    let onNavigate: (HomeView.ActiveSheet) -> Void
     
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            // ✅ 修复1: 背景遮罩独立为一层，使用 allowsHitTesting 控制
-            if isExpanded {
-                Color.black.opacity(0.01)
-                    .ignoresSafeArea()
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.3)) {
-                            isExpanded = false
-                        }
-                    }
-                    .transition(.opacity)
-            }
+        VStack(alignment: .trailing, spacing: 0) {
+            triggerButton
             
-            // 菜单主体
-            VStack(alignment: .leading, spacing: 12) {
-                if isExpanded {
-                    menuContent
-                        .transition(.asymmetric(
-                            insertion: .move(edge: .top).combined(with: .opacity),
-                            removal: .move(edge: .top).combined(with: .opacity)
-                        ))
-                }
-                
-                triggerButton
+            if isExpanded {
+                compactMenuContent
+                    .padding(.top, 6)
+                    // ✅ 关键修复：强制整个菜单面板以右上角为基准对齐
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .transition(.asymmetric(
+                        insertion: .scale(scale: 0.9, anchor: .topTrailing)
+                            .combined(with: .opacity)
+                            .animation(.spring(response: 0.4, dampingFraction: 0.75)),
+                        removal: .scale(scale: 0.95, anchor: .topTrailing)
+                            .combined(with: .opacity)
+                            .animation(.spring(response: 0.2, dampingFraction: 0.9))
+                    ))
             }
-            .padding(.top, 8)
-            .padding(.leading, 16)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        // ✅ 修复2: 确保整个 ZStack 不会意外拦截非菜单区域的点击
-        .allowsHitTesting(true)
+        // ✅ 确保外层 VStack 不会撑满父容器高度
+        .fixedSize(horizontal: false, vertical: true)
     }
     
-    // 触发按钮
     private var triggerButton: some View {
         Button {
-            withAnimation(.spring(response: 0.35)) {
+            let generator = UIImpactFeedbackGenerator(style: .medium)
+            generator.impactOccurred()
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
                 isExpanded.toggle()
             }
         } label: {
-            Image(systemName: isExpanded ? "xmark" : "line.3.horizontal")
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(.primary)
+            Text(String(selectedService.name.prefix(1)))
+                .font(.title3.weight(.bold))
+                .foregroundStyle(.white)
                 .frame(width: 44, height: 44)
-                .background(.ultraThickMaterial, in: Circle())
-                .shadow(color: .black.opacity(0.15), radius: 8, y: 4)
+                .background(Color.accentColor, in: Circle())
+                .overlay(Circle().stroke(Color.white.opacity(0.2), lineWidth: 0.5))
+                .shadow(color: .black.opacity(0.12), radius: 8, y: 4)
         }
-        .zIndex(1) // ✅ 确保按钮始终在最上层
+        .buttonStyle(.plain)
     }
     
-    // 菜单内容面板
-    private var menuContent: some View {
+    private var compactMenuContent: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // AI 服务选择区
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
+            HStack(spacing: 0) {
+                CompactMenuIconButton(icon: "folder.fill", title: "文件") {
+                    onNavigate(.files)
+                }
+                .frame(maxWidth: .infinity)
+                
+                Divider().frame(height: 18).opacity(0.3)
+                
+                CompactMenuIconButton(icon: "gearshape.fill", title: "设置") {
+                    onNavigate(.settings)
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .padding(.vertical, 6)
+            
+            Divider().padding(.horizontal, 8).opacity(0.3)
+            
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 1) {
                     ForEach(services) { service in
-                        ServiceChip(
+                        CompactServiceRow(
                             name: service.name,
                             isSelected: selectedService.id == service.id
                         )
                         .onTapGesture {
+                            let generator = UISelectionFeedbackGenerator()
+                            generator.selectionChanged()
                             selectedService = service
-                            withAnimation(.spring(response: 0.3)) {
-                                isExpanded = false
-                            }
+                            withAnimation(.spring(response: 0.3)) { isExpanded = false }
                         }
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 4)
             }
-            
-            Divider().padding(.horizontal, 16)
-            
-            // ✅ 修复3: 功能入口改用 Button + NavigationPath 或直接 push
-            VStack(spacing: 0) {
-                MenuRow(icon: "folder.fill", title: "我的文件") {
-                    FilesTabView()
-                }
-                MenuRow(icon: "gearshape.fill", title: "设置") {
-                    SettingsView()
-                }
-            }
-            .padding(.vertical, 4)
+            // ✅ 移除固定 maxHeight，改为自适应内容高度，避免空白撑开
+            .frame(maxHeight: 220, alignment: .top)
         }
-        .background(.ultraThickMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: .black.opacity(0.12), radius: 12, y: 6)
-        .zIndex(1) // ✅ 确保菜单内容也在遮罩之上
+        .frame(width: 180, alignment: .topLeading) // ✅ 强制内容左上角对齐
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.white.opacity(0.18), lineWidth: 0.5)
+        )
+        .shadow(color: .black.opacity(0.1), radius: 12, y: 6)
     }
 }
 
-// AI 服务选择标签
-private struct ServiceChip: View {
+// MARK: - 紧凑版子组件
+private struct CompactServiceRow: View {
     let name: String
     let isSelected: Bool
     
     var body: some View {
-        Text(name)
-            .font(.subheadline.weight(.medium))
-            .foregroundStyle(isSelected ? .white : .primary)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(
-                Capsule()
-                    .foregroundStyle(isSelected ? Color.accentColor : Color.secondary.opacity(0.12))
-            )
+        HStack(spacing: 8) {
+            RoundedRectangle(cornerRadius: 1)
+                .fill(isSelected ? Color.white : Color.clear)
+                .frame(width: 2, height: 12)
+            
+            Text(name)
+                .font(.caption.weight(isSelected ? .semibold : .regular))
+                .foregroundStyle(isSelected ? .white : .primary)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 7)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .foregroundStyle(isSelected ? Color.accentColor.opacity(0.9) : Color.clear)
+        )
+        .contentShape(Rectangle())
     }
 }
 
-// ✅ 修复4: 重构 MenuRow，使用泛型 Destination 但通过 @ViewBuilder 传递
-private struct MenuRow<Destination: View>: View {
+private struct CompactMenuIconButton: View {
     let icon: String
     let title: String
-    @ViewBuilder let destination: () -> Destination
+    let action: () -> Void
     
     var body: some View {
-        NavigationLink(destination: destination()) {
-            HStack(spacing: 12) {
+        Button(action: action) {
+            VStack(spacing: 3) {
                 Image(systemName: icon)
-                    .font(.body)
+                    .font(.caption)
                     .foregroundStyle(Color.accentColor)
-                    .frame(width: 24)
                 
                 Text(title)
-                    .font(.body)
+                    .font(.caption2)
                     .foregroundStyle(.primary)
-                
-                Spacer()
-                
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .contentShape(Rectangle()) // ✅ 确保整行都可点击
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.borderless)
     }
 }
