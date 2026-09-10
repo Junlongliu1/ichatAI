@@ -27,24 +27,31 @@ struct HomeView: View {
                     .transition(.opacity.animation(.easeInOut(duration: 0.3)))
             }
 
-            VStack {
-                Spacer()
-                FloatingActionMenu(
-                    services: serviceManager.visibleServices,
-                    selectedService: $selectedService,
-                    isExpanded: $isMenuExpanded,
-                    onNavigate: { target in
-                        withAnimation(.spring(response: 0.25)) { isMenuExpanded = false }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                            activeSheet = target
+            if isMenuExpanded {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                            isMenuExpanded = false
                         }
                     }
-                )
-                Spacer()
+                    .transition(.opacity)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+        }
+        .overlay(alignment: .trailing) {
+            FloatingActionMenu(
+                services: serviceManager.visibleServices,
+                selectedService: $selectedService,
+                isExpanded: $isMenuExpanded,
+                onNavigate: { target in
+                    withAnimation(.spring(response: 0.25)) { isMenuExpanded = false }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        activeSheet = target
+                    }
+                }
+            )
             .padding(.trailing, 12)
-            .ignoresSafeArea(edges: [.top, .bottom])
         }
         .navigationBarHidden(true)
         .onAppear {
@@ -81,7 +88,7 @@ private struct FullScreenPageContainer: View {
 private struct LoadingOverlay: View {
     let serviceName: String
     @State private var isAnimating = false
-    
+
     var body: some View {
         VStack(spacing: 20) {
             HStack(spacing: 8) {
@@ -103,152 +110,176 @@ private struct LoadingOverlay: View {
     }
 }
 
-// MARK: - 紧凑型贴边下拉悬浮菜单（排版修复版）
+// MARK: - 悬浮球 + 展开菜单
 private struct FloatingActionMenu: View {
     let services: [AIService]
     @Binding var selectedService: AIService
     @Binding var isExpanded: Bool
     let onNavigate: (HomeView.ActiveSheet) -> Void
-    
-    var body: some View {
-        VStack(alignment: .trailing, spacing: 0) {
-            triggerButton
-            
-            if isExpanded {
-                compactMenuContent
-                    .padding(.top, 6)
-                    // ✅ 关键修复：强制整个菜单面板以右上角为基准对齐
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                    .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .transition(.asymmetric(
-                        insertion: .scale(scale: 0.9, anchor: .topTrailing)
-                            .combined(with: .opacity)
-                            .animation(.spring(response: 0.4, dampingFraction: 0.75)),
-                        removal: .scale(scale: 0.95, anchor: .topTrailing)
-                            .combined(with: .opacity)
-                            .animation(.spring(response: 0.2, dampingFraction: 0.9))
-                    ))
-            }
-        }
-        // ✅ 确保外层 VStack 不会撑满父容器高度
-        .fixedSize(horizontal: false, vertical: true)
+
+    private let buttonSize: CGFloat = 48
+    private let menuGap: CGFloat = 10
+    private let menuWidth: CGFloat = 200
+    private let rowHeight: CGFloat = 38
+    private let maxVisibleRows = 5
+
+    private var servicesAreaHeight: CGFloat {
+        let rows = max(1, min(services.count, maxVisibleRows))
+        return CGFloat(rows) * rowHeight + 12
     }
-    
+
+    var body: some View {
+        triggerButton
+            .overlay(alignment: .topTrailing) {
+                if isExpanded {
+                    compactMenuContent
+                        .offset(y: buttonSize + menuGap)
+                        .transition(.asymmetric(
+                            insertion: .scale(scale: 0.85, anchor: .topTrailing)
+                                .combined(with: .opacity)
+                                .animation(.spring(response: 0.4, dampingFraction: 0.78)),
+                            removal: .scale(scale: 0.92, anchor: .topTrailing)
+                                .combined(with: .opacity)
+                                .animation(.easeOut(duration: 0.15))
+                        ))
+                }
+            }
+    }
+
+    // MARK: 悬浮球
     private var triggerButton: some View {
         Button {
-            let generator = UIImpactFeedbackGenerator(style: .medium)
-            generator.impactOccurred()
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.72)) {
                 isExpanded.toggle()
             }
         } label: {
-            Text(String(selectedService.name.prefix(1)))
-                .font(.title3.weight(.bold))
-                .foregroundStyle(.white)
-                .frame(width: 44, height: 44)
-                .background(Color.accentColor, in: Circle())
-                .overlay(Circle().stroke(Color.white.opacity(0.2), lineWidth: 0.5))
-                .shadow(color: .black.opacity(0.12), radius: 8, y: 4)
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.accentColor, Color.accentColor.opacity(0.82)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: buttonSize, height: buttonSize)
+
+                Circle()
+                    .stroke(Color.white.opacity(0.25), lineWidth: 0.5)
+                    .frame(width: buttonSize, height: buttonSize)
+
+                Text(String(selectedService.name.prefix(1)))
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(.white)
+            }
+            .shadow(color: Color.accentColor.opacity(0.35), radius: 10, y: 4)
+            .shadow(color: .black.opacity(0.12), radius: 4, y: 2)
         }
         .buttonStyle(.plain)
+        .animation(.spring(response: 0.35, dampingFraction: 0.72), value: selectedService.id)
     }
-    
+
+    // MARK: 展开面板
     private var compactMenuContent: some View {
         VStack(alignment: .leading, spacing: 0) {
+            // ── 顶部功能栏 ──
             HStack(spacing: 0) {
                 CompactMenuIconButton(icon: "folder.fill", title: "文件") {
                     onNavigate(.files)
                 }
-                .frame(maxWidth: .infinity)
-                
-                Divider().frame(height: 18).opacity(0.3)
-                
+                Divider().frame(height: 24).opacity(0.25)
                 CompactMenuIconButton(icon: "gearshape.fill", title: "设置") {
                     onNavigate(.settings)
                 }
-                .frame(maxWidth: .infinity)
             }
-            .padding(.vertical, 6)
-            
-            Divider().padding(.horizontal, 8).opacity(0.3)
-            
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 1) {
+            .padding(.vertical, 10)
+
+            Divider().padding(.horizontal, 12).opacity(0.25)
+
+            // ── AI 服务列表 ──
+            ScrollView(.vertical, showsIndicators: services.count > maxVisibleRows) {
+                VStack(alignment: .leading, spacing: 2) {
                     ForEach(services) { service in
                         CompactServiceRow(
                             name: service.name,
                             isSelected: selectedService.id == service.id
                         )
                         .onTapGesture {
-                            let generator = UISelectionFeedbackGenerator()
-                            generator.selectionChanged()
+                            UISelectionFeedbackGenerator().selectionChanged()
                             selectedService = service
                             withAnimation(.spring(response: 0.3)) { isExpanded = false }
                         }
                     }
                 }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 4)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
             }
-            // ✅ 移除固定 maxHeight，改为自适应内容高度，避免空白撑开
-            .frame(maxHeight: 220, alignment: .top)
+            .frame(height: servicesAreaHeight)
         }
-        .frame(width: 180, alignment: .topLeading) // ✅ 强制内容左上角对齐
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color.white.opacity(0.18), lineWidth: 0.5)
+        .frame(width: menuWidth)
+        .background(
+            .ultraThinMaterial,
+            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
         )
-        .shadow(color: .black.opacity(0.1), radius: 12, y: 6)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.white.opacity(0.2), lineWidth: 0.5)
+        )
+        .shadow(color: .black.opacity(0.15), radius: 16, y: 8)
     }
 }
 
-// MARK: - 紧凑版子组件
+// MARK: - 服务行
 private struct CompactServiceRow: View {
     let name: String
     let isSelected: Bool
-    
+
     var body: some View {
         HStack(spacing: 8) {
-            RoundedRectangle(cornerRadius: 1)
+            RoundedRectangle(cornerRadius: 1.5)
                 .fill(isSelected ? Color.white : Color.clear)
-                .frame(width: 2, height: 12)
-            
+                .frame(width: 2.5, height: 12)
+
             Text(name)
                 .font(.caption.weight(isSelected ? .semibold : .regular))
                 .foregroundStyle(isSelected ? .white : .primary)
                 .lineLimit(1)
+
+            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 7)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .foregroundStyle(isSelected ? Color.accentColor.opacity(0.9) : Color.clear)
+                .fill(isSelected ? Color.accentColor.opacity(0.9) : Color.clear)
         )
         .contentShape(Rectangle())
     }
 }
 
+// MARK: - 顶部功能按钮
 private struct CompactMenuIconButton: View {
     let icon: String
     let title: String
     let action: () -> Void
-    
+
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 3) {
+            VStack(spacing: 4) {
                 Image(systemName: icon)
-                    .font(.caption)
+                    .font(.system(size: 16, weight: .medium))
                     .foregroundStyle(Color.accentColor)
-                
+
                 Text(title)
-                    .font(.caption2)
+                    .font(.system(size: 11))
                     .foregroundStyle(.primary)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(.plain)
     }
 }

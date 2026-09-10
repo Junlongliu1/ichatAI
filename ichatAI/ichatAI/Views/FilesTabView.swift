@@ -20,9 +20,8 @@ struct FilesTabView: View {
             if !fileManager.files.isEmpty { bottomInfoBar }
         }
         .navigationTitle("我的文件")
-        .navigationBarBackButtonHidden(true) // ✅ 隐藏系统默认返回
+        .navigationBarBackButtonHidden(true)
         .toolbar {
-            // ✅ 左侧返回按钮
             ToolbarItem(placement: .topBarLeading) {
                 Button(action: onDismiss) {
                     HStack(spacing: 4) {
@@ -32,7 +31,6 @@ struct FilesTabView: View {
                     }
                 }
             }
-            // ✅ 右侧原有菜单保持不变
             if !fileManager.files.isEmpty {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
