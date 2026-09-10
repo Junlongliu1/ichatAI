@@ -7,12 +7,43 @@ enum Metric {
     static let fabSize: CGFloat = 48
     static let fabTrailingPadding: CGFloat = 12
     static let menuGap: CGFloat = 10
-    static let menuWidth: CGFloat = 200
+    static let menuWidth: CGFloat = 208
     static let menuCornerRadius: CGFloat = 16
-    static let rowHeight: CGFloat = 34
+    static let rowHeight: CGFloat = 36
     static let rowSpacing: CGFloat = 2
     static let listVerticalPadding: CGFloat = 12
     static let maxVisibleRows = 5
+}
+
+// MARK: - 名称 → 配色（悬浮球和菜单行共用）
+enum AvatarPalette {
+    /// 稳定哈希：跨进程、跨设备、跨时间一致
+    static func stableHash(_ string: String) -> UInt64 {
+        var hash: UInt64 = 5381
+        for byte in string.utf8 {
+            hash = (hash &* 33) &+ UInt64(byte)
+        }
+        return hash
+    }
+
+    /// 品牌色优先；未识别 → hash 派生双色渐变
+    static func gradient(for name: String) -> [Color] {
+        let brand = AILogo.detect(from: name).brandColors
+        if !brand.isEmpty { return brand }
+
+        let hash = stableHash(name)
+        let hue1 = Double(hash % 360) / 360.0
+        let hue2 = (hue1 + 0.12).truncatingRemainder(dividingBy: 1.0)
+        return [
+            Color(hue: hue1, saturation: 0.72, brightness: 0.92),
+            Color(hue: hue2, saturation: 0.86, brightness: 0.62)
+        ]
+    }
+
+    /// 主色（用于阴影、选中背景）
+    static func primary(for name: String) -> Color {
+        gradient(for: name).first ?? .accentColor
+    }
 }
 
 // MARK: - 悬浮球 + 展开菜单
@@ -56,7 +87,7 @@ struct FloatingActionMenu: View {
                         )
                     )
 
-                // 主渐变（品牌色 or hash 派生）
+                // 主渐变
                 Circle()
                     .fill(
                         LinearGradient(
@@ -123,26 +154,8 @@ struct FloatingActionMenu: View {
         .animation(.spring(response: 0.35, dampingFraction: 0.72), value: selectedService.id)
     }
 
-    // MARK: - 名称 → 背景色
-    private static func stableHash(_ string: String) -> UInt64 {
-        var hash: UInt64 = 5381
-        for byte in string.utf8 {
-            hash = (hash &* 33) &+ UInt64(byte)
-        }
-        return hash
-    }
-
     private var avatarGradient: [Color] {
-        let brand = AILogo.detect(from: selectedService.name).brandColors
-        if !brand.isEmpty { return brand }
-
-        let hash = Self.stableHash(selectedService.name)
-        let hue1 = Double(hash % 360) / 360.0
-        let hue2 = (hue1 + 0.12).truncatingRemainder(dividingBy: 1.0)
-        return [
-            Color(hue: hue1, saturation: 0.72, brightness: 0.92),
-            Color(hue: hue2, saturation: 0.86, brightness: 0.62)
-        ]
+        AvatarPalette.gradient(for: selectedService.name)
     }
 
     private var avatarShadowColor: Color {
@@ -152,6 +165,7 @@ struct FloatingActionMenu: View {
     // MARK: 展开面板
     private var compactMenuContent: some View {
         VStack(alignment: .leading, spacing: 0) {
+            // 顶部功能栏
             HStack(spacing: 0) {
                 CompactMenuIconButton(icon: "folder.fill", title: "文件") {
                     onNavigate(.files)
@@ -163,6 +177,7 @@ struct FloatingActionMenu: View {
             }
             .padding(.vertical, 10)
 
+            // 服务列表
             if !services.isEmpty {
                 Divider().padding(.horizontal, 12).opacity(0.25)
 
@@ -207,26 +222,42 @@ struct FloatingActionMenu: View {
     }
 }
 
-// MARK: - 服务行（带品牌色小圆点）
+// MARK: - 服务行（LOGO 圆底 + 品牌色选中）
 private struct CompactServiceRow: View {
     let name: String
     let isSelected: Bool
 
+    private var gradient: [Color] {
+        AvatarPalette.gradient(for: name)
+    }
+
     var body: some View {
-        HStack(spacing: 8) {
-            Circle()
-                .fill(
-                    LinearGradient(
-                        colors: brandColors.isEmpty ? [.secondary, .secondary.opacity(0.6)] : brandColors,
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
+        HStack(spacing: 10) {
+            // LOGO 圆底
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: gradient,
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
                     )
-                )
-                .frame(width: 12, height: 12)
-                .overlay(Circle().stroke(Color.white.opacity(0.4), lineWidth: 0.5))
+                    .frame(width: 24, height: 24)
+                    .overlay(
+                        Circle().stroke(Color.white.opacity(0.35), lineWidth: 0.5)
+                    )
+                    .shadow(
+                        color: (gradient.first ?? .black).opacity(0.25),
+                        radius: 3,
+                        y: 1
+                    )
+
+                AILogoMark(name: name, size: 14)
+            }
 
             Text(name)
-                .font(.caption.weight(isSelected ? .semibold : .regular))
+                .font(.subheadline.weight(isSelected ? .semibold : .regular))
                 .foregroundStyle(isSelected ? .white : .primary)
                 .lineLimit(1)
 
@@ -236,13 +267,22 @@ private struct CompactServiceRow: View {
         .frame(maxWidth: .infinity, minHeight: Metric.rowHeight, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(isSelected ? Color.accentColor.opacity(0.9) : Color.clear)
+                .fill(
+                    isSelected
+                        ? AnyShapeStyle(
+                            LinearGradient(
+                                colors: [
+                                    gradient.first?.opacity(0.85) ?? .accentColor,
+                                    gradient.last?.opacity(0.85) ?? .accentColor
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        : AnyShapeStyle(Color.clear)
+                )
         )
         .contentShape(Rectangle())
-    }
-
-    private var brandColors: [Color] {
-        AILogo.detect(from: name).brandColors
     }
 }
 
