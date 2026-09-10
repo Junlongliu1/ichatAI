@@ -1,28 +1,49 @@
-//  设置页面
-
+// SettingsView.swift
+// 设置页面
 import SwiftUI
 
-//  深色模式枚举
+// MARK: - 主题枚举
 enum AppTheme: String, CaseIterable, Identifiable {
-    case system = "system"
-    case light = "light"
-    case dark = "dark"
-    
+    case system, light, dark
+
     var id: String { rawValue }
-    
+
     var displayName: String {
         switch self {
         case .system: return "跟随系统"
-        case .light: return "浅色模式"
-        case .dark: return "深色模式"
+        case .light:  return "浅色模式"
+        case .dark:   return "深色模式"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .system: return "circle.lefthalf.filled"
+        case .light:  return "sun.max.fill"
+        case .dark:   return "moon.fill"
+        }
+    }
+
+    /// 供 `.preferredColorScheme()` 使用
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light:  return .light
+        case .dark:   return .dark
         }
     }
 }
 
+// MARK: - 设置视图
 struct SettingsView: View {
     let onDismiss: () -> Void
+
     @AppStorage("appTheme") private var appThemeRaw: String = AppTheme.system.rawValue
-    
+
+    private var currentTheme: AppTheme {
+        AppTheme(rawValue: appThemeRaw) ?? .system
+    }
+
     var body: some View {
         List {
             appearanceSection
@@ -32,64 +53,65 @@ struct SettingsView: View {
         }
         .listStyle(.insetGrouped)
         .navigationTitle("设置")
+        .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button(action: onDismiss) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "chevron.left")
-                            .font(.body.weight(.semibold))
-                        Text("返回")
-                    }
+                    Label("返回", systemImage: "chevron.left")
+                        .font(.body.weight(.semibold))
                 }
+                .buttonStyle(.plain)
             }
         }
     }
-    // 拆分子视图
-    // 外观
+
+    // MARK: - 外观
     private var appearanceSection: some View {
         Section("外观") {
             Picker(selection: $appThemeRaw) {
                 ForEach(AppTheme.allCases) { theme in
-                    Text(theme.displayName)
+                    Label(theme.displayName, systemImage: theme.icon)
                         .tag(theme.rawValue)
                 }
             } label: {
-                Label("显示模式", systemImage: "paintbrush.fill")
+                Text("显示模式")
             }
         }
     }
-    
-    //  AI 服务
+
+    // MARK: - AI 服务
     private var aiServiceSection: some View {
         Section("AI 服务") {
-            NavigationLink(destination: AIServiceManageView()) {
-                Label("AI 服务管理", systemImage: "brain.head.profile")
+            NavigationLink {
+                AIServiceManageView()
+            } label: {
+                Text("AI 服务管理")
             }
         }
     }
-    
-    //  开发者
+
+    // MARK: - 开发者
     private var developerSection: some View {
         Section("开发者") {
-            NavigationLink(destination: LogViewerView()) {
-                Label("调试日志", systemImage: "terminal.fill")
+            NavigationLink {
+                LogViewerView()
+            } label: {
+                Text("调试日志")
             }
-            NavigationLink(destination: StorageManagerView()) {
-                Label("存储管理", systemImage: "internaldrive.fill")
+            NavigationLink {
+                StorageManagerView()
+            } label: {
+                Text("存储管理")
             }
         }
     }
-    
-    //  关于
+
+    // MARK: - 关于
     private var aboutSection: some View {
-        Section("关于 iChatAI") {
-            HStack {
-                Text("版本号")
-                Spacer()
-                Text(AppInfo.version)
-                    .foregroundStyle(.secondary)
-            }
+        Section("关于") {
+            LabeledContent("应用名称", value: "iChatAI")
+            LabeledContent("版本号", value: AppInfo.version)
         }
     }
 }
