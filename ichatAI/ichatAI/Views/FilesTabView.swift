@@ -1,5 +1,5 @@
 // FilesTabView.swift
-// 文件管理视图
+// 文件管理 —— iOS 26 液态玻璃
 import SwiftUI
 import QuickLook
 
@@ -10,36 +10,43 @@ struct FilesTabView: View {
     @State private var selectedFile: URL?
     @State private var showDeleteAllAlert = false
 
-    private let imageGridColumns = [GridItem(.adaptive(minimum: 110), spacing: 8)]
+    private let gridColumns = [GridItem(.adaptive(minimum: 108), spacing: 10)]
 
     // MARK: - Body
     var body: some View {
-        VStack(spacing: 0) {
-            if !fileManager.files.isEmpty {
-                categorySelector
+        ScrollView {
+            VStack(spacing: 16) {
+                if !fileManager.files.isEmpty {
+                    categoryChips
+                }
+                contentView
             }
-
-            content
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            if !fileManager.files.isEmpty {
-                bottomInfoBar
-            }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 100)      // 为底部浮动栏预留空间
         }
+        .scrollEdgeEffectStyle(.soft, for: .all)
+        .background(Color(.systemGroupedBackground))
         .navigationTitle("我的文件")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button(action: onDismiss) {
-                    Label("返回", systemImage: "chevron.left")
+                    Image(systemName: "chevron.left")
                         .font(.body.weight(.semibold))
                 }
+                .accessibilityLabel("返回")
             }
             if !fileManager.files.isEmpty {
                 ToolbarItem(placement: .topBarTrailing) {
                     overflowMenu
                 }
+            }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if !fileManager.files.isEmpty {
+                bottomGlassBar
             }
         }
         .quickLookPreview($selectedFile)
@@ -55,81 +62,49 @@ struct FilesTabView: View {
         }
     }
 
-    // MARK: - Content 分流
+    // MARK: - 分类选择（横向玻璃胶囊）
+    private var categoryChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            GlassEffectContainer(spacing: 8) {
+                HStack(spacing: 8) {
+                    ForEach(FileCategory.allCases) { category in
+                        let isSelected = fileManager.selectedCategory == category
+                        Button {
+                            UISelectionFeedbackGenerator().selectionChanged()
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                fileManager.selectedCategory = category
+                            }
+                        } label: {
+                            CategoryChipLabel(
+                                category: category,
+                                count: fileManager.count(for: category),
+                                isSelected: isSelected
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .glassEffect(
+                            isSelected
+                                ? .regular.tint(Color.accentColor).interactive()
+                                : .regular.interactive(),
+                            in: .capsule
+                        )
+                    }
+                }
+                .padding(.horizontal, 2)
+            }
+        }
+    }
+
+    // MARK: - Content
     @ViewBuilder
-    private var content: some View {
+    private var contentView: some View {
         if fileManager.filteredFiles.isEmpty {
             emptyStateView
         } else if fileManager.selectedCategory == .image {
-            imageGridView
+            imageGrid
         } else {
-            fileListView
+            fileList
         }
-    }
-
-    // MARK: - 底部统计栏
-    private var bottomInfoBar: some View {
-        HStack {
-            Text("\(fileManager.filteredFiles.count) / \(fileManager.files.count) 个文件")
-            Spacer()
-            Text("共 \(FileFormatters.size.string(fromByteCount: filteredTotalSize))")
-                .monospacedDigit()
-        }
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(.ultraThinMaterial)
-        .overlay(alignment: .top) { Divider() }
-    }
-
-    private var filteredTotalSize: Int64 {
-        fileManager.filteredFiles.reduce(0) { $0 + $1.fileSize }
-    }
-
-    // MARK: - 工具栏溢出菜单
-    private var overflowMenu: some View {
-        Menu {
-            Button {
-                fileManager.loadFiles()
-            } label: {
-                Label("刷新", systemImage: "arrow.clockwise")
-            }
-            Divider()
-            Button(role: .destructive) {
-                showDeleteAllAlert = true
-            } label: {
-                Label("清空所有文件", systemImage: "trash.fill")
-            }
-        } label: {
-            Image(systemName: "ellipsis")
-                .symbolRenderingMode(.hierarchical)
-        }
-    }
-
-    // MARK: - 分类选择器
-    private var categorySelector: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                ForEach(FileCategory.allCases) { category in
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.25)) {
-                            fileManager.selectedCategory = category
-                        }
-                    } label: {
-                        CategoryChip(
-                            category: category,
-                            isSelected: fileManager.selectedCategory == category,
-                            count: fileManager.count(for: category)
-                        )
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-        }
-        .background(.ultraThinMaterial)
     }
 
     // MARK: - 空状态
@@ -152,75 +127,134 @@ struct FilesTabView: View {
                 } label: {
                     Label("刷新", systemImage: "arrow.clockwise")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.glass)
             } else {
                 Button("查看全部") {
                     withAnimation { fileManager.selectedCategory = .all }
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.glass)
             }
         }
+        .padding(.top, 40)
     }
 
     // MARK: - 图片网格
-    private var imageGridView: some View {
-        ScrollView {
-            LazyVGrid(columns: imageGridColumns, spacing: 8) {
-                ForEach(fileManager.filteredFiles) { file in
-                    Button {
-                        selectedFile = file.fileURL
-                    } label: {
-                        ImageGridItem(file: file)
-                    }
-                    .buttonStyle(.plain)
-                    .contextMenu {
-                        Button(role: .destructive) {
-                            withAnimation { fileManager.deleteFile(file) }
-                        } label: {
-                            Label("删除", systemImage: "trash.fill")
-                        }
-                    }
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-        }
-        .refreshable { fileManager.loadFiles() }
-    }
-
-    // MARK: - 列表
-    private var fileListView: some View {
-        List {
+    private var imageGrid: some View {
+        LazyVGrid(columns: gridColumns, spacing: 10) {
             ForEach(fileManager.filteredFiles) { file in
                 Button {
                     selectedFile = file.fileURL
                 } label: {
-                    FileRowView(file: file)
+                    ImageGridCard(file: file)
                 }
                 .buttonStyle(.plain)
-                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                .contextMenu {
                     Button(role: .destructive) {
-                        withAnimation(.spring(response: 0.35)) {
-                            fileManager.deleteFile(file)
-                        }
+                        withAnimation { fileManager.deleteFile(file) }
                     } label: {
                         Label("删除", systemImage: "trash.fill")
                     }
                 }
-                .listRowSeparator(.hidden)
-                .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
             }
         }
-        .listStyle(.plain)
-        .refreshable { fileManager.loadFiles() }
+    }
+
+    // MARK: - 文件列表
+    private var fileList: some View {
+        LazyVStack(spacing: 10) {
+            ForEach(fileManager.filteredFiles) { file in
+                Button {
+                    selectedFile = file.fileURL
+                } label: {
+                    FileRowCard(file: file)
+                }
+                .buttonStyle(.plain)
+                .contextMenu {
+                    Button(role: .destructive) {
+                        withAnimation { fileManager.deleteFile(file) }
+                    } label: {
+                        Label("删除", systemImage: "trash.fill")
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - 底部浮动玻璃栏
+    private var bottomGlassBar: some View {
+        GlassEffectContainer(spacing: 10) {
+            HStack(spacing: 10) {
+                // 统计信息
+                HStack(spacing: 10) {
+                    Label {
+                        Text("\(fileManager.filteredFiles.count)/\(fileManager.files.count)")
+                            .monospacedDigit()
+                            .contentTransition(.numericText())
+                    } icon: {
+                        Image(systemName: "doc.on.doc")
+                    }
+                    .font(.footnote.weight(.medium))
+
+                    Divider().frame(height: 14)
+
+                    Label {
+                        Text(FileFormatters.size.string(fromByteCount: filteredTotalSize))
+                            .monospacedDigit()
+                    } icon: {
+                        Image(systemName: "internaldrive")
+                    }
+                    .font(.footnote.weight(.medium))
+                }
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 14)
+                .frame(height: 40)
+                .glassEffect(.regular, in: .capsule)
+
+                Spacer(minLength: 0)
+
+                // 刷新
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    fileManager.loadFiles()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 15, weight: .medium))
+                        .frame(width: 40, height: 40)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .glassEffect(.regular.interactive(), in: .circle)
+                .accessibilityLabel("刷新")
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 8)
+        }
+    }
+
+    private var filteredTotalSize: Int64 {
+        fileManager.filteredFiles.reduce(0) { $0 + $1.fileSize }
+    }
+
+    // MARK: - 溢出菜单
+    private var overflowMenu: some View {
+        Menu {
+            Button(role: .destructive) {
+                showDeleteAllAlert = true
+            } label: {
+                Label("清空所有文件", systemImage: "trash.fill")
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .symbolRenderingMode(.hierarchical)
+        }
     }
 }
 
-// MARK: - 分类标签
-private struct CategoryChip: View {
+// MARK: - 分类 Chip
+private struct CategoryChipLabel: View {
     let category: FileCategory
-    let isSelected: Bool
     let count: Int
+    let isSelected: Bool
 
     var body: some View {
         HStack(spacing: 6) {
@@ -233,11 +267,13 @@ private struct CategoryChip: View {
             if count > 0 {
                 Text("\(count)")
                     .font(.caption2.weight(.bold))
+                    .monospacedDigit()
                     .padding(.horizontal, 5)
                     .padding(.vertical, 1)
                     .background(
-                        isSelected ? AnyShapeStyle(.white.opacity(0.3))
-                                   : AnyShapeStyle(.secondary.opacity(0.15)),
+                        isSelected
+                            ? AnyShapeStyle(.white.opacity(0.3))
+                            : AnyShapeStyle(.secondary.opacity(0.15)),
                         in: Capsule()
                     )
             }
@@ -245,45 +281,44 @@ private struct CategoryChip: View {
         .foregroundStyle(isSelected ? .white : .primary)
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .background(
-            Capsule().fill(
-                isSelected ? Color.accentColor : Color.secondary.opacity(0.1)
-            )
-        )
         .contentShape(Capsule())
     }
 }
 
-// MARK: - 图片网格项
-private struct ImageGridItem: View {
+// MARK: - 图片网格卡片
+private struct ImageGridCard: View {
     let file: DownloadedFile
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
-            FileThumbnailView(file: file, width: nil, height: 100)
+            FileThumbnailView(file: file, width: nil, height: 108)
                 .frame(maxWidth: .infinity)
                 .clipped()
 
             LinearGradient(
-                colors: [.clear, .black.opacity(0.5)],
+                colors: [.clear, .black.opacity(0.55)],
                 startPoint: .top,
                 endPoint: .bottom
             )
-            .frame(height: 28)
+            .frame(height: 36)
 
             Text(file.fileName)
                 .font(.system(size: 9, weight: .medium))
                 .foregroundStyle(.white)
                 .lineLimit(1)
                 .padding(.horizontal, 6)
-                .padding(.bottom, 4)
+                .padding(.bottom, 5)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(.white.opacity(0.08), lineWidth: 0.5)
+        )
     }
 }
 
-// MARK: - 文件行
-private struct FileRowView: View {
+// MARK: - 文件行卡片
+private struct FileRowCard: View {
     let file: DownloadedFile
 
     var body: some View {
@@ -293,29 +328,26 @@ private struct FileRowView: View {
             Spacer(minLength: 0)
             Image(systemName: "chevron.right")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.quaternary)
+                .foregroundStyle(.tertiary)
         }
-        .padding(.vertical, 8)
-        .contentShape(Rectangle())
+        .padding(12)
+        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 18))
     }
 
-    // 缩略图 / 图标
     @ViewBuilder
     private var thumbnailView: some View {
         if file.fileType == .image {
             FileThumbnailView(file: file, width: 56, height: 56)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(lineWidth: 0.5)
-                        .foregroundStyle(.black.opacity(0.08))
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(.black.opacity(0.08), lineWidth: 0.5)
                 )
         } else {
             FileThumbnailView(file: file, width: 56, height: 56)
         }
     }
 
-    // 文件信息
     private var fileInfoView: some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(displayName)
@@ -351,7 +383,6 @@ private struct FileRowView: View {
         return name
     }
 
-    // 文件类型徽章
     private var fileTypeBadge: some View {
         Text(file.fileType.label)
             .font(.system(size: 9, weight: .semibold))

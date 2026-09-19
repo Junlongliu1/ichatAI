@@ -1,7 +1,7 @@
 // StorageManagerView.swift
-// 存储管理页面
+// 存储管理 —— iOS 26 液态玻璃
+// 使用堆叠横向条替代扇形图，更直观、更贴合 Liquid Glass 风格
 import SwiftUI
-import Charts
 
 struct StorageManagerView: View {
     @StateObject private var cacheManager = WebCacheManager()
@@ -24,22 +24,69 @@ struct StorageManagerView: View {
         cacheManager.cacheItems.filter { $0.size == 0 }
     }
 
+    private var totalSize: Int64 {
+        nonEmptyItems.reduce(0) { $0 + $1.size }
+    }
+
     private var selectedTotalSize: Int64 {
         nonEmptyItems
             .filter { selectedTypes.contains($0.type) }
             .reduce(0) { $0 + $1.size }
     }
 
+    private var isAllSelected: Bool {
+        !nonEmptyItems.isEmpty && selectedTypes.count == nonEmptyItems.count
+    }
+
+    /// 名称 → 颜色 的稳定映射（列表和色带共用）
+    private var colorMapping: [String: Color] {
+        var mapping: [String: Color] = [:]
+        for (index, item) in nonEmptyItems.enumerated() {
+            mapping[item.id] = ChartColors.color(for: index)
+        }
+        return mapping
+    }
+
     // MARK: - Body
     var body: some View {
-        List {
-            chartSection
-            cacheListSection
-            clearSection
+        ScrollView {
+            VStack(spacing: 20) {
+                overviewCard
+                cacheListCard
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 100)
         }
-        .listStyle(.insetGrouped)
+        .scrollEdgeEffectStyle(.soft, for: .all)
+        .background(Color(.systemGroupedBackground))
         .navigationTitle("存储管理")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    cacheManager.fetchCacheSizes()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .symbolRenderingMode(.hierarchical)
+                        .rotationEffect(.degrees(cacheManager.isLoading ? 360 : 0))
+                        .animation(
+                            cacheManager.isLoading
+                                ? .linear(duration: 1).repeatForever(autoreverses: false)
+                                : .default,
+                            value: cacheManager.isLoading
+                        )
+                }
+                .disabled(cacheManager.isLoading)
+                .accessibilityLabel("刷新")
+            }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if !selectedTypes.isEmpty {
+                clearBottomBar
+            }
+        }
         .confirmationDialog(
             "确认清理",
             isPresented: $showClearConfirm,
@@ -64,75 +111,80 @@ struct StorageManagerView: View {
         }
     }
 
-    // MARK: - 顶部概览
-    private var chartSection: some View {
-        Section {
-            VStack(spacing: 16) {
-                if cacheManager.isLoading {
-                    ProgressView("正在计算存储...")
-                        .frame(maxWidth: .infinity, minHeight: 220)
-                } else {
-                    StoragePieChart(items: cacheManager.cacheItems)
-                        .frame(height: 220)
+    // MARK: - 顶部概览卡
+    private var overviewCard: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            if cacheManager.isLoading {
+                ProgressView("正在计算存储...")
+                    .frame(maxWidth: .infinity, minHeight: 160)
+            } else {
+                // 总占用
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("App 总存储占用")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
 
-                    Divider()
+                    Text(cacheManager.totalFormattedSize)
+                        .font(.system(size: 40, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                        .contentTransition(.numericText())
+                        .animation(.easeInOut(duration: 0.3), value: cacheManager.totalFormattedSize)
+                }
 
-                    HStack {
-                        Text("App 总存储占用")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Text(cacheManager.totalFormattedSize)
-                            .font(.title3.bold())
-                            .monospacedDigit()
-                            .contentTransition(.numericText())
+                // 堆叠色带
+                if !nonEmptyItems.isEmpty {
+                    StackedBar(items: nonEmptyItems, colorMapping: colorMapping)
+
+                    // 图例（两列）
+                    let columns = [GridItem(.flexible()), GridItem(.flexible())]
+                    LazyVGrid(columns: columns, alignment: .leading, spacing: 10) {
+                        ForEach(nonEmptyItems) { item in
+                            legendItem(for: item)
+                        }
                     }
-                    .padding(.horizontal, 4)
-                    .animation(.easeInOut(duration: 0.25), value: cacheManager.totalFormattedSize)
                 }
             }
-            .padding(.vertical, 8)
-        } header: {
-            HStack {
-                Text("存储概览")
-                Spacer()
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        cacheManager.fetchCacheSizes()
-                    }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.caption.weight(.semibold))
-                }
-                .disabled(cacheManager.isLoading)
-                .buttonStyle(.plain)
-            }
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassEffect(.regular, in: .rect(cornerRadius: 26))
+    }
+
+    private func legendItem(for item: CacheItem) -> some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(colorMapping[item.id] ?? .gray)
+                .frame(width: 9, height: 9)
+
+            Text(item.name)
+                .font(.footnote)
+                .lineLimit(1)
+
+            Spacer(minLength: 4)
+
+            Text(item.formattedSize)
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
         }
     }
 
-    // MARK: - 可选择清理列表
-    private var cacheListSection: some View {
-        Section {
-            ForEach(nonEmptyItems) { item in
-                cacheRow(for: item)
-            }
-
-            if !emptyItems.isEmpty {
-                HStack(spacing: 10) {
-                    Image(systemName: "checkmark.circle")
-                        .foregroundStyle(.secondary.opacity(0.3))
-                    Text("\(emptyItems.count) 项暂无占用")
-                        .font(.subheadline)
-                        .foregroundStyle(.tertiary)
-                }
-                .padding(.vertical, 2)
-            }
-        } header: {
+    // MARK: - 缓存列表卡
+    private var cacheListCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // 头部
             HStack {
                 Text("选择要清理的类型")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
+                    .tracking(0.5)
+
                 Spacer()
+
                 if !nonEmptyItems.isEmpty {
                     Button(isAllSelected ? "取消全选" : "全选") {
+                        UISelectionFeedbackGenerator().selectionChanged()
                         withAnimation(.easeInOut(duration: 0.2)) {
                             if isAllSelected {
                                 selectedTypes.removeAll()
@@ -141,90 +193,98 @@ struct StorageManagerView: View {
                             }
                         }
                     }
-                    .font(.caption)
-                    .textCase(nil)
+                    .font(.footnote.weight(.medium))
                 }
             }
-        } footer: {
-            if nonEmptyItems.isEmpty && !cacheManager.isLoading {
-                Text("暂无缓存可清理，已为你保持最佳状态 🎉")
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
+            .padding(.bottom, 12)
+
+            // 列表
+            VStack(spacing: 8) {
+                ForEach(nonEmptyItems) { item in
+                    CacheRow(
+                        item: item,
+                        isSelected: selectedTypes.contains(item.type),
+                        accentColor: colorMapping[item.id] ?? .accentColor
+                    ) {
+                        UISelectionFeedbackGenerator().selectionChanged()
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            if selectedTypes.contains(item.type) {
+                                selectedTypes.remove(item.type)
+                            } else {
+                                selectedTypes.insert(item.type)
+                            }
+                        }
+                    }
+                }
+
+                if !emptyItems.isEmpty {
+                    HStack(spacing: 10) {
+                        Image(systemName: "checkmark.circle")
+                            .foregroundStyle(.tertiary)
+                        Text("\(emptyItems.count) 项暂无占用")
+                            .font(.subheadline)
+                            .foregroundStyle(.tertiary)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                }
+
+                if nonEmptyItems.isEmpty && !cacheManager.isLoading {
+                    HStack(spacing: 10) {
+                        Image(systemName: "sparkles")
+                            .foregroundStyle(.secondary)
+                        Text("暂无缓存可清理，已为你保持最佳状态")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+                }
             }
+            .padding(.horizontal, 12)
+            .padding(.bottom, 12)
         }
+        .glassEffect(.regular, in: .rect(cornerRadius: 26))
     }
 
-    private var isAllSelected: Bool {
-        !nonEmptyItems.isEmpty && selectedTypes.count == nonEmptyItems.count
-    }
-
-    // MARK: - 底部清理按钮
-    private var clearSection: some View {
-        Section {
-            Button(role: .destructive) {
-                showClearConfirm = true
-            } label: {
-                HStack {
-                    Spacer()
-                    Label(
-                        selectedTypes.isEmpty
-                            ? "清理选中缓存"
-                            : "清理选中缓存（\(selectedTypes.count) 项 · \(formatSize(selectedTotalSize))）",
-                        systemImage: "trash.fill"
-                    )
-                    .font(.body.weight(.semibold))
-                    Spacer()
+    // MARK: - 底部清理栏
+    private var clearBottomBar: some View {
+        GlassEffectContainer(spacing: 10) {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("已选 \(selectedTypes.count) 项")
+                        .font(.footnote.weight(.medium))
+                    Text(formatSize(selectedTotalSize))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
                 }
+                .padding(.horizontal, 16)
+                .frame(height: 44)
+                .glassEffect(.regular, in: .capsule)
+
+                Spacer(minLength: 0)
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    showClearConfirm = true
+                } label: {
+                    Label("清理", systemImage: "trash.fill")
+                        .font(.body.weight(.semibold))
+                        .padding(.horizontal, 20)
+                        .frame(height: 44)
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .glassEffect(.regular.tint(.red).interactive(), in: .capsule)
             }
-            .disabled(selectedTypes.isEmpty || cacheManager.isLoading)
-        } footer: {
-            if selectedTypes.isEmpty {
-                Text("请先在上方选择要清理的缓存类型。")
-            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 8)
         }
-    }
-
-    // MARK: - 缓存行
-    private func cacheRow(for item: CacheItem) -> some View {
-        let isSelected = selectedTypes.contains(item.type)
-
-        return Button {
-            UISelectionFeedbackGenerator().selectionChanged()
-            withAnimation(.easeInOut(duration: 0.15)) {
-                if isSelected {
-                    selectedTypes.remove(item.type)
-                } else {
-                    selectedTypes.insert(item.type)
-                }
-            }
-        } label: {
-            HStack(spacing: 12) {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(isSelected ? Color.accentColor : .secondary.opacity(0.5))
-                    .font(.title3)
-                    .contentTransition(.symbolEffect(.replace))
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(item.name)
-                        .font(.body)
-                        .foregroundStyle(.primary)
-                    Text(item.type)
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
-
-                Spacer()
-
-                Text(item.formattedSize)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .listRowBackground(
-            isSelected
-                ? Color.accentColor.opacity(0.08)
-                : Color(UIColor.secondarySystemGroupedBackground)
-        )
     }
 
     // MARK: - Actions
@@ -253,88 +313,78 @@ struct StorageManagerView: View {
     }
 }
 
-// MARK: - 扇形图组件
-struct StoragePieChart: View {
+// MARK: - 堆叠横向色带
+private struct StackedBar: View {
     let items: [CacheItem]
+    let colorMapping: [String: Color]
 
-    /// 有磁盘占用的项（排除内存缓存 -1 与空项）
-    private var chartData: [CacheItem] {
-        items.filter { $0.size > 0 }
-    }
-
-    /// 名称 → 颜色 的稳定映射，图例与扇区共用
-    private var colorMapping: [(name: String, color: Color)] {
-        chartData.enumerated().map { index, item in
-            (item.name, ChartColors.color(for: index))
-        }
-    }
-
-    private var colorDomain: [String] {
-        colorMapping.map(\.name)
-    }
-
-    private var colorRange: [Color] {
-        colorMapping.map(\.color)
+    private var total: Int64 {
+        items.reduce(0) { $0 + $1.size }
     }
 
     var body: some View {
-        if chartData.isEmpty {
-            emptyState
-        } else {
-            HStack(spacing: 16) {
-                Chart(chartData) { item in
-                    SectorMark(
-                        angle: .value("大小", item.size),
-                        innerRadius: .ratio(0.62),
-                        angularInset: 2.0
-                    )
-                    .cornerRadius(4)
-                    .foregroundStyle(by: .value("类型", item.name))
+        GeometryReader { geo in
+            HStack(spacing: 2) {
+                ForEach(items) { item in
+                    let ratio = total > 0 ? Double(item.size) / Double(total) : 0
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(colorMapping[item.id] ?? .gray)
+                        .frame(width: max(2, geo.size.width * ratio - 2))
                 }
-                // ✅ 关键：显式绑定 domain/range，保证图例与扇区颜色一致
-                .chartForegroundStyleScale(domain: colorDomain, range: colorRange)
-                .chartLegend(.hidden)
-                .aspectRatio(1, contentMode: .fit)
-                .frame(maxWidth: 160)
-
-                legend
             }
-            .padding(.horizontal, 4)
         }
+        .frame(height: 14)
+        .clipShape(Capsule())
     }
+}
 
-    private var legend: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ForEach(colorMapping, id: \.name) { entry in
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(entry.color)
-                        .frame(width: 10, height: 10)
-                    Text(entry.name)
-                        .font(.caption)
+// MARK: - 缓存行
+private struct CacheRow: View {
+    let item: CacheItem
+    let isSelected: Bool
+    let accentColor: Color
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 12) {
+                // 左侧色条
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(accentColor)
+                    .frame(width: 3, height: 28)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(item.name)
+                        .font(.body)
+                        .foregroundStyle(.primary)
+
+                    Text(item.type)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
                         .lineLimit(1)
-                    Spacer(minLength: 0)
+                        .truncationMode(.middle)
                 }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
 
-    private var emptyState: some View {
-        ZStack {
-            Circle()
-                .stroke(Color.secondary.opacity(0.2), lineWidth: 30)
-                .frame(width: 160, height: 160)
-            VStack(spacing: 4) {
-                Image(systemName: "checkmark.circle")
-                    .font(.title2)
+                Spacer(minLength: 8)
+
+                Text(item.formattedSize)
+                    .font(.subheadline.monospacedDigit())
                     .foregroundStyle(.secondary)
-                Text("无磁盘占用")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(isSelected ? Color.accentColor : Color.secondary.opacity(0.4))
+                    .font(.title3)
+                    .contentTransition(.symbolEffect(.replace))
             }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
+            )
         }
-        .frame(maxWidth: .infinity)
+        .buttonStyle(.plain)
     }
 }
 

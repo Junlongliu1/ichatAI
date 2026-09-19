@@ -1,13 +1,12 @@
-// 文件缩略图视图
-
+// 文件缩略图视图 —— iOS 26 液态玻璃
 import SwiftUI
 
 struct FileThumbnailView: View {
-    let file: DownloadedFile        // 下载文件模型
-    let width: CGFloat?             // 缩略图宽度
-    let height: CGFloat             // 缩略图高度
+    let file: DownloadedFile
+    let width: CGFloat?
+    let height: CGFloat
 
-    @State private var image: UIImage?      // 缩略图图片
+    @State private var image: UIImage?
 
     var body: some View {
         Group {
@@ -23,7 +22,6 @@ struct FileThumbnailView: View {
         }
     }
 
-    // 视图构建器，用于根据文件类型显示不同的视图
     @ViewBuilder
     private var imageView: some View {
         if let image {
@@ -36,16 +34,22 @@ struct FileThumbnailView: View {
         }
     }
 
-    // 视图构建器，用于显示文件类型图标
     private var fileIconView: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(
                     LinearGradient(
-                        colors: [file.fileType.color.opacity(0.15), file.fileType.color.opacity(0.05)],
+                        colors: [
+                            file.fileType.color.opacity(0.18),
+                            file.fileType.color.opacity(0.06)
+                        ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(file.fileType.color.opacity(0.15), lineWidth: 0.5)
                 )
 
             Image(systemName: file.fileType.icon)
@@ -54,7 +58,6 @@ struct FileThumbnailView: View {
         }
     }
 
-    // 异步加载图片
     @MainActor
     private func loadImage() async {
         guard file.fileType == .image else { return }
