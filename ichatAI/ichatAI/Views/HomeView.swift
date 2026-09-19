@@ -5,9 +5,14 @@
 //  2. 顶部加载进度条
 //  3. 加载失败错误页 + 重试
 import SwiftUI
+import UIKit
 
 struct HomeView: View {
     @StateObject private var serviceManager = AIServiceManager.shared
+
+    /// 监听设置页中的主题，用于同步给 WebView
+    @AppStorage("appTheme") private var appThemeRaw: String = AppTheme.system.rawValue
+
     @State private var selectedService: AIService
     @State private var activeSheet: ActiveSheet?
 
@@ -28,6 +33,11 @@ struct HomeView: View {
         _serviceStates = State(initialValue: [defaultService.id: WebViewState()])
     }
 
+    /// 当前应传给 WebView 的原生样式
+    private var currentUIStyle: UIUserInterfaceStyle {
+        (AppTheme(rawValue: appThemeRaw) ?? .system).uiStyle
+    }
+
     /// 当前选中服务的状态
     private var currentState: WebViewState {
         serviceStates[selectedService.id] ?? WebViewState()
@@ -40,7 +50,8 @@ struct HomeView: View {
                 if let service = serviceManager.allServices.first(where: { $0.id == serviceID }) {
                     AIWebView(
                         state: stateBinding(for: serviceID),
-                        currentURL: service.url
+                        currentURL: service.url,
+                        uiStyle: currentUIStyle
                     )
                     .opacity(serviceID == selectedService.id ? 1 : 0)
                     .allowsHitTesting(serviceID == selectedService.id)

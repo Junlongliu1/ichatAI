@@ -9,6 +9,7 @@
 //  6. WebView 配置补充（inline 播放 / 全屏 / JS 新窗口）
 //  7. estimatedProgress KVO 驱动进度条
 //  8. 按 reloadToken 支持外部触发重试
+//  9. 同步 App 主题到 WebView（仅传递 prefers-color-scheme 信号）
 
 import SwiftUI
 import WebKit
@@ -27,6 +28,8 @@ struct WebViewState {
 struct AIWebView: UIViewRepresentable {
     @Binding var state: WebViewState
     let currentURL: String
+    /// 当前 App 的主题样式，用于同步给 WKWebView
+    let uiStyle: UIUserInterfaceStyle
 
     // MARK: UIViewRepresentable
     func makeCoordinator() -> Coordinator {
@@ -51,6 +54,10 @@ struct AIWebView: UIViewRepresentable {
         )
 
         let webView = WKWebView(frame: .zero, configuration: config)
+
+        // 创建时同步主题
+        webView.overrideUserInterfaceStyle = uiStyle
+
         webView.customUserAgent = Self.userAgent
         webView.allowsBackForwardNavigationGestures = true
         webView.scrollView.contentInsetAdjustmentBehavior = .automatic
@@ -67,6 +74,11 @@ struct AIWebView: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: WKWebView, context: Context) {
+        // 主题变化时同步给 WebView，不注入 JS
+        if uiView.overrideUserInterfaceStyle != uiStyle {
+            uiView.overrideUserInterfaceStyle = uiStyle
+        }
+
         context.coordinator.load(
             urlString: currentURL,
             in: uiView,
