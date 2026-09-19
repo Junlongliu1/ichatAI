@@ -1,333 +1,396 @@
-// LogViewerView.swift
-// 调试日志查看器
+//
+//  LogViewerView.swift
+//  iNotion
+//
+//  日志查看器 —— iOS 26 液态玻璃风格
+//
+
 import SwiftUI
 
+// MARK: - LogLevel 的 UI 扩展
+
+extension LogLevel {
+    var color: Color {
+        switch self {
+        case .error:   return .red
+        case .warning: return .orange
+        case .debug:   return Color(uiColor: .tertiaryLabel)
+        case .info:    return .primary
+        }
+    }
+
+    var hasWarningBackground: Bool {
+        self == .error || self == .warning
+    }
+
+    var backgroundTint: Color {
+        switch self {
+        case .error:   return Color.red.opacity(0.08)
+        case .warning: return Color.orange.opacity(0.06)
+        default:       return .clear
+        }
+    }
+}
+
+// MARK: - 视图
+
 struct LogViewerView: View {
-    @ObservedObject private var logManager = LogManager.shared
-
+    @Bindable private var logManager = LogManager.shared
     @State private var autoScroll = true
-    @State private var showClearConfirm = false
-    @State private var searchText = ""
+    @State private var showCopySuccess = false
+    @State private var showConfirmClear = false
 
-    /// 统一 Toast 状态（复制、刷新、清空共用）
-    @State private var toastMessage: String?
+    private let cardRadius: CGFloat = 22
+    private let cardSpacing: CGFloat = 14
+    private let horizontalPadding: CGFloat = 16
 
-    /// 解析后的日志行，避免 body 反复 split
-    @State private var logLines: [LogLine] = []
-
-    @State private var toastTask: Task<Void, Never>?
-
-    // MARK: - 日志行模型
-    struct LogLine: Identifiable {
-        let id: Int
-        let text: String
-        let level: Level
-
-        enum Level {
-            case debug, warning, error, plain
-
-            var color: Color {
-                switch self {
-                case .debug:   return .secondary
-                case .warning: return .orange
-                case .error:   return .red
-                case .plain:   return .primary
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: cardSpacing) {
+                    controlCard
+                        .id("logTop")
+                    logCard
+                }
+                .padding(.horizontal, horizontalPadding)
+                .padding(.top, 8)
+                .padding(.bottom, 24)
+            }
+            .scrollEdgeEffectStyle(.soft, for: .all)
+            .onChange(of: logManager.entries.count) { _, newCount in
+                if newCount == 0 {
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(80))
+                        withAnimation(.easeOut(duration: 0.25)) {
+                            proxy.scrollTo("logTop", anchor: .top)
+                        }
+                    }
+                } else if autoScroll {
+                    withAnimation(.easeOut(duration: 0.1)) {
+                        proxy.scrollTo("logBottom", anchor: .bottom)
+                    }
                 }
             }
         }
-
-        init(id: Int, text: String) {
-            self.id = id
-            self.text = text
-            let upper = text.uppercased()
-            if upper.contains("[ERROR]") || upper.contains("❌") {
-                self.level = .error
-            } else if upper.contains("[WARN]") || upper.contains("⚠️") {
-                self.level = .warning
-            } else if upper.contains("[DEBUG]") {
-                self.level = .debug
-            } else {
-                self.level = .plain
-            }
-        }
-    }
-
-    private var filteredLines: [LogLine] {
-        guard !searchText.isEmpty else { return logLines }
-        let q = searchText.lowercased()
-        return logLines.filter { $0.text.lowercased().contains(q) }
-    }
-
-    // MARK: - Body
-    var body: some View {
-        VStack(spacing: 0) {
-            controlBar
-            Divider()
-            logContentArea
-            Divider()
-            bottomActionBar
-        }
-        .navigationTitle("调试日志")
+        .background(Color(.systemGroupedBackground))
+        .navigationTitle("日志面板")
         .navigationBarTitleDisplayMode(.inline)
-        .searchable(
-            text: $searchText,
-            placement: .navigationBarDrawer(displayMode: .always),
-            prompt: "搜索日志内容"
-        )
-        .task {
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            bottomBar
+        }
+        .onAppear {
             logManager.loadTodayLog()
-            refreshLines()
         }
-        .onChange(of: logManager.logContent) { _, _ in
-            refreshLines()
-        }
-        .onDisappear {
-            toastTask?.cancel()
-        }
-        // 复制、刷新、清空共用顶部 Toast
         .overlay(alignment: .top) {
-            if let message = toastMessage {
-                ToastView(message: message)
+            if showCopySuccess {
+                ToastView(message: "已复制到剪贴板")
+                    .padding(.top, 8)
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
-        // 居中确认弹窗
-        .alert("确认清空日志？", isPresented: $showClearConfirm) {
-            Button("取消", role: .cancel) {}
-            Button("清空今日日志", role: .destructive) {
-                performClear()
-            }
-        } message: {
-            Text("此操作不可撤销，今日的日志文件将被删除。")
-        }
-    }
-
-    // MARK: - 顶部控制栏
-    private var controlBar: some View {
-        HStack(spacing: 12) {
-            Button {
-                autoScroll.toggle()
-            } label: {
-                Label(
-                    "自动滚动",
-                    systemImage: autoScroll ? "arrow.down.circle.fill" : "arrow.down.circle"
-                )
-                .font(.caption)
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .tint(autoScroll ? .accentColor : .secondary)
-
-            Spacer()
-
-            Text("\(filteredLines.count) 行")
-                .font(.caption2.monospacedDigit())
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Color(.secondarySystemFill), in: RoundedRectangle(cornerRadius: 4))
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-    }
-
-    // MARK: - 日志内容区
-    private var logContentArea: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    if filteredLines.isEmpty {
-                        emptyStateView
-                    } else {
-                        ForEach(filteredLines) { line in
-                            logLineView(line: line)
-                        }
-                    }
-
-                    // 底部锚点
-                    Color.clear
-                        .frame(height: 1)
-                        .id("logBottom")
-                }
-                .padding(.vertical, 4)
-            }
-            .onChange(of: filteredLines.count) { _, _ in
-                guard autoScroll, !filteredLines.isEmpty else { return }
-                withAnimation(.easeOut(duration: 0.15)) {
-                    proxy.scrollTo("logBottom", anchor: .bottom)
-                }
-            }
-            .onChange(of: autoScroll) { _, isOn in
-                guard isOn, !filteredLines.isEmpty else { return }
+        .alert("清空日志？", isPresented: $showConfirmClear) {
+            Button("清空", role: .destructive) {
                 withAnimation(.easeOut(duration: 0.2)) {
-                    proxy.scrollTo("logBottom", anchor: .bottom)
+                    logManager.clearTodayLog()
                 }
             }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("将删除今天的所有日志内容，归档文件不受影响。")
         }
     }
 
-    // MARK: - 单行日志
-    private func logLineView(line: LogLine) -> some View {
-        HStack(alignment: .top, spacing: 6) {
-            Text("\(line.id + 1)")
-                .font(.system(.caption2, design: .monospaced))
-                .foregroundStyle(.tertiary)
-                .frame(width: 36, alignment: .trailing)
+    // MARK: - 控制卡
 
-            Text(line.text)
-                .font(.system(.caption, design: .monospaced))
-                .foregroundStyle(line.level.color)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
+    private var controlCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            cardHeader(icon: "slider.horizontal.3", title: "控制")
+
+            HStack(spacing: 6) {
+                toggleButton(
+                    isOn: $logManager.consoleEnabled,
+                    iconOn: "terminal.fill",
+                    iconOff: "terminal",
+                    label: "控制台"
+                )
+
+                toggleButton(
+                    isOn: $logManager.fileWriteEnabled,
+                    iconOn: "doc.text.fill",
+                    iconOff: "doc.text",
+                    label: "写文件"
+                )
+
+                toggleButton(
+                    isOn: $autoScroll,
+                    iconOn: "arrow.down.circle.fill",
+                    iconOff: "arrow.down.circle",
+                    label: "滚动"
+                )
+
+                Spacer(minLength: 4)
+
+                lineCountBadge
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 14)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassEffect(.regular, in: .rect(cornerRadius: cardRadius))
+    }
+
+    private var lineCountBadge: some View {
+        HStack(spacing: 3) {
+            Text("\(logManager.lineCount)")
+                .monospacedDigit()
+                .contentTransition(.numericText())
+            Text("行")
+        }
+        .font(.system(size: 11, weight: .medium))
+        .foregroundColor(.secondary)
         .padding(.horizontal, 8)
-        .padding(.vertical, 3)
+        .padding(.vertical, 4)
+        .background(Capsule().fill(Color.secondary.opacity(0.10)))
+    }
+
+    private func toggleButton(
+        isOn: Binding<Bool>,
+        iconOn: String,
+        iconOff: String,
+        label: String
+    ) -> some View {
+        Button {
+            withAnimation(.easeOut(duration: 0.15)) {
+                isOn.wrappedValue.toggle()
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: isOn.wrappedValue ? iconOn : iconOff)
+                    .font(.system(size: 12, weight: .semibold))
+                    .contentTransition(.symbolEffect(.replace))
+
+                Text(label)
+                    .font(.system(size: 12, weight: .medium))
+            }
+            .foregroundColor(isOn.wrappedValue ? .accentColor : .secondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                Capsule().fill(
+                    isOn.wrappedValue
+                        ? Color.accentColor.opacity(0.15)
+                        : Color.secondary.opacity(0.10)
+                )
+            )
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - 日志卡
+
+    private var logCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            cardHeader(icon: "text.alignleft", title: "运行日志")
+
+            if logManager.entries.isEmpty {
+                emptyState
+            } else {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(logManager.entries) { entry in
+                        logLineView(entry: entry)
+                    }
+                }
+                .padding(.vertical, 6)
+                .id("logBottom")
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            line.id.isMultiple(of: 2)
-                ? Color.clear
-                : Color(.secondarySystemFill).opacity(0.35)
+            RoundedRectangle(cornerRadius: cardRadius, style: .continuous)
+                .fill(Color(.secondarySystemGroupedBackground))
         )
     }
 
-    // MARK: - 空状态
-    private var emptyStateView: some View {
-        ContentUnavailableView {
-            Label(
-                searchText.isEmpty ? "暂无日志" : "没有匹配的日志",
-                systemImage: searchText.isEmpty ? "doc.text.magnifyingglass" : "magnifyingglass"
-            )
-        } description: {
-            Text(
-                searchText.isEmpty
-                    ? "当应用运行时，日志将显示在这里"
-                    : "试试其它关键词"
-            )
-        } actions: {
-            if !searchText.isEmpty {
-                Button("清除搜索") { searchText = "" }
-                    .buttonStyle(.bordered)
-            }
+    private func cardHeader(icon: String, title: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(.secondary)
+
+            Text(title)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(.secondary)
+                .textCase(.uppercase)
+                .tracking(0.5)
+
+            Spacer()
         }
-        .padding(.top, 40)
+        .padding(.horizontal, 16)
+        .padding(.top, 14)
+        .padding(.bottom, 10)
+    }
+
+    private func logLineView(entry: LogEntry) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text("\(entry.lineNumber)")
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundColor(.secondary.opacity(0.45))
+                .frame(width: 30, alignment: .trailing)
+                .padding(.top, 2)
+
+            if let timestamp = entry.timestamp {
+                Text(timestamp)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(.secondary.opacity(0.75))
+                    .monospacedDigit()
+                    .frame(width: 78, alignment: .leading)
+                    .padding(.top, 1)
+            }
+
+            Text(entry.level.rawValue)
+                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .foregroundColor(entry.level.color)
+                .frame(width: 44, alignment: .leading)
+                .padding(.top, 1)
+
+            Text(entry.rest)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundColor(.primary)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 3)
+        .background(background(for: entry))
+    }
+
+    private func background(for entry: LogEntry) -> Color {
+        entry.id % 2 == 0 ? Color.clear : Color.primary.opacity(0.03)
+    }
+
+    // MARK: - 空状态
+
+    private var emptyState: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "doc.text.magnifyingglass")
+                .font(.system(size: 32))
+                .foregroundColor(.secondary.opacity(0.6))
+
+            Text("暂无日志")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(.secondary)
+
+            Text("当应用运行时，日志将显示在这里")
+                .font(.system(size: 12))
+                .foregroundColor(.secondary.opacity(0.8))
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 40)
     }
 
     // MARK: - 底部操作栏
-    private var bottomActionBar: some View {
-        HStack(spacing: 12) {
-            actionButton(
-                title: "复制",
-                systemImage: "doc.on.doc",
-                tint: nil,
-                action: copyLogs
-            )
-            .disabled(logLines.isEmpty)
 
-            actionButton(
-                title: "刷新",
-                systemImage: "arrow.clockwise",
-                tint: nil,
-                action: performRefresh
-            )
+    private var bottomBar: some View {
+        HStack(spacing: 10) {
+            floatingButton(icon: "doc.on.doc", label: "复制", tint: .primary) {
+                copyLogs()
+            }
 
-            actionButton(
-                title: "清空",
-                systemImage: "trash",
-                tint: .red,
-                role: .destructive,
-                action: { showClearConfirm = true }
-            )
-            .disabled(logLines.isEmpty)
+            floatingButton(icon: "arrow.clockwise", label: "刷新", tint: .primary) {
+                logManager.loadTodayLog()
+            }
+
+            floatingButton(icon: "trash", label: "清空", tint: .red) {
+                showConfirmClear = true
+            }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, horizontalPadding)
+        .padding(.top, 6)
+        .padding(.bottom, 8)
     }
 
-    private func actionButton(
-        title: String,
-        systemImage: String,
-        tint: Color?,
-        role: ButtonRole? = nil,
+    private func floatingButton(
+        icon: String,
+        label: String,
+        tint: Color,
         action: @escaping () -> Void
     ) -> some View {
-        Button(role: role, action: action) {
-            Label(title, systemImage: systemImage)
-                .frame(maxWidth: .infinity)
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .semibold))
+                Text(label)
+                    .font(.system(size: 13, weight: .semibold))
+            }
+            .foregroundColor(tint)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 11)
+            .contentShape(Rectangle())
         }
-        .buttonStyle(.bordered)
-        .controlSize(.regular)
-        .tint(tint)
+        .buttonStyle(FloatingCapsuleButtonStyle())
+        .glassEffect(.regular.interactive(), in: .capsule)
     }
 
-    // MARK: - 日志解析
-    private func refreshLines() {
-        let content = logManager.logContent
-        guard !content.isEmpty else {
-            logLines = []
+    // MARK: - 复制
+
+    private func copyLogs() {
+        guard !logManager.entries.isEmpty else {
+            AppLogWarn("[LogViewer] 尝试复制空日志，忽略")
             return
         }
-        logLines = content
-            .split(separator: "\n", omittingEmptySubsequences: true)
-            .enumerated()
-            .map { index, slice in
-                LogLine(id: index, text: String(slice))
-            }
-    }
 
-    // MARK: - Actions
+        UIPasteboard.general.string = logManager.entries
+            .map(\.raw)
+            .joined(separator: "\n")
 
-    /// 刷新：重载日志 + 顶部 Toast 提示
-    private func performRefresh() {
-        logManager.loadTodayLog()
-        refreshLines()
-        showToast("已刷新")
-    }
-
-    /// 清空：确认后执行 + 顶部 Toast 提示
-    private func performClear() {
-        logManager.clearTodayLog()
-        refreshLines()
-        showToast("已清空日志")
-    }
-
-    /// 复制：写入剪贴板 + 顶部 Toast 提示
-    private func copyLogs() {
-        guard !logManager.logContent.isEmpty else { return }
-        UIPasteboard.general.string = logManager.logContent
-        showToast("已复制到剪贴板")
-    }
-
-    /// 统一 Toast 触发方法（复制、刷新、清空共用）
-    private func showToast(_ message: String) {
-        toastTask?.cancel()
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-            toastMessage = message
+        withAnimation(.easeOut(duration: 0.2)) {
+            showCopySuccess = true
         }
-        toastTask = Task {
+        Task {
             try? await Task.sleep(for: .seconds(1.5))
-            guard !Task.isCancelled else { return }
-            await MainActor.run {
-                withAnimation { toastMessage = nil }
+            withAnimation(.easeOut(duration: 0.2)) {
+                showCopySuccess = false
             }
         }
     }
 }
 
+// MARK: - 按下反馈
+
+private struct FloatingCapsuleButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
+            .opacity(configuration.isPressed ? 0.85 : 1.0)
+            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
+    }
+}
+
 // MARK: - Toast
+
 struct ToastView: View {
     let message: String
 
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green)
+                .foregroundColor(.green)
+                .font(.system(size: 14))
+
             Text(message)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.white)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(.primary)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(.black.opacity(0.82), in: Capsule())
-        .shadow(color: .black.opacity(0.2), radius: 10, y: 4)
-        .padding(.top, 8)
+        .glassEffect(.regular, in: .capsule)
+        .shadow(color: .black.opacity(0.08), radius: 8, y: 2)
+    }
+}
+
+#Preview {
+    NavigationStack {
+        LogViewerView()
     }
 }

@@ -100,7 +100,7 @@ class WebCacheManager: ObservableObject {
     private func size(at url: URL) -> Int64 {
         let fm = FileManager.default
         guard fm.fileExists(atPath: url.path) else {
-            AppLog("[Size] 不存在: \(url.path)")
+            AppLogError("[Size] 不存在: \(url.path)")
             return 0
         }
         
@@ -125,7 +125,7 @@ class WebCacheManager: ObservableObject {
                 }
             }
         }
-        AppLog("[Size] DIR \(url.lastPathComponent) | recursive_size=\(totalSize) bytes")
+        AppLogInfo("[Size] DIR \(url.lastPathComponent) | recursive_size=\(totalSize) bytes")
         return totalSize
     }
     

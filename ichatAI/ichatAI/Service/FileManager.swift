@@ -64,7 +64,7 @@ class DownloadedFileManager: ObservableObject {
                 }
                 .sorted { $0.createdAt > $1.createdAt }
         } catch {
-            AppLog("加载文件列表失败: \(error.localizedDescription)")
+            AppLogError("加载文件列表失败: \(error.localizedDescription)")
         }
     }
     
@@ -74,7 +74,7 @@ class DownloadedFileManager: ObservableObject {
             try FileManager.default.removeItem(at: file.fileURL)
             files.removeAll { $0.id == file.id }
         } catch {
-            AppLog("删除文件失败: \(error.localizedDescription)")
+            AppLogError("删除文件失败: \(error.localizedDescription)")
         }
     }
     

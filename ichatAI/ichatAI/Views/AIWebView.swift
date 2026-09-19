@@ -171,7 +171,7 @@ extension AIWebView {
             // 快速拒绝明显过大的 base64（base64 长度 ≈ 原始大小 × 4/3）
             let maxBase64Length = Int(maxBlobSize) * 4 / 3 + 64
             guard dataUri.count <= maxBase64Length else {
-                AppLog("[Blob] 数据过大，已拒绝（base64 长度 \(dataUri.count)，上限 \(maxBase64Length)）")
+                AppLogError("[Blob] 数据过大，已拒绝（base64 长度 \(dataUri.count)，上限 \(maxBase64Length)）")
                 return
             }
 
@@ -179,7 +179,7 @@ extension AIWebView {
 
             DispatchQueue.global(qos: .userInitiated).async {
                 guard let commaIndex = dataUri.firstIndex(of: ",") else {
-                    AppLog("无效的 Data URI")
+                    AppLogError("无效的 Data URI")
                     return
                 }
 
@@ -190,12 +190,12 @@ extension AIWebView {
                     .first ?? ""
 
                 guard let fileData = Data(base64Encoded: base64Str) else {
-                    AppLog("Base64 解码失败")
+                    AppLogError("Base64 解码失败")
                     return
                 }
 
                 guard fileData.count <= Int(maxSize) else {
-                    AppLog("文件过大，已拒绝：\(fileData.count / 1024 / 1024)MB")
+                    AppLogError("文件过大，已拒绝：\(fileData.count / 1024 / 1024)MB")
                     return
                 }
 
@@ -207,10 +207,10 @@ extension AIWebView {
 
                 do {
                     try fileData.write(to: fileURL)
-                    AppLog("文件已保存到 App 内部: \(fileURL.path)")
-                    AppLog("大小: \(fileData.count / 1024)KB | 类型: \(ext)")
+                    AppLogInfo("文件已保存到 App 内部: \(fileURL.path)")
+                    AppLogInfo("大小: \(fileData.count / 1024)KB | 类型: \(ext)")
                 } catch {
-                    AppLog("写入沙盒失败: \(error.localizedDescription)")
+                    AppLogError("写入沙盒失败: \(error.localizedDescription)")
                 }
             }
         }
@@ -417,7 +417,7 @@ extension AIWebView {
                 message = "加载失败，请稍后重试"
             }
 
-            AppLog("[WebView] 加载失败 code=\(nsError.code): \(error.localizedDescription)")
+            AppLogError("[WebView] 加载失败 code=\(nsError.code): \(error.localizedDescription)")
             updateState {
                 $0.isLoading = false
                 $0.error = message
@@ -427,7 +427,7 @@ extension AIWebView {
         /// WebContent 进程被系统回收（内存压力）时自动重载，超过 2 次则停止，避免死循环
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
             crashCount += 1
-            AppLog("[WebView] WebContent 进程终止，第 \(crashCount) 次")
+            AppLogError("[WebView] WebContent 进程终止，第 \(crashCount) 次")
 
             guard crashCount <= 2 else {
                 updateState {
