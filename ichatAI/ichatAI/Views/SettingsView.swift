@@ -23,15 +23,6 @@ enum AppTheme: String, CaseIterable, Identifiable {
         case .dark:   return "moon.fill"
         }
     }
-
-    /// 供 `.preferredColorScheme()` 使用
-    var colorScheme: ColorScheme? {
-        switch self {
-        case .system: return nil
-        case .light:  return .light
-        case .dark:   return .dark
-        }
-    }
 }
 
 // MARK: - 设置视图

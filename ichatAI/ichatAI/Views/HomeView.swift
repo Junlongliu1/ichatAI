@@ -1,12 +1,11 @@
 // HomeView.swift
-// 首页主视图
+// 首页主视图 — iOS 26+ Liquid Glass 设计
 import SwiftUI
 
 struct HomeView: View {
     @StateObject private var serviceManager = AIServiceManager.shared
     @State private var selectedService: AIService
     @State private var isWebLoading = true
-    @State private var isMenuExpanded = false
     @State private var activeSheet: ActiveSheet?
 
     enum ActiveSheet: Identifiable {
@@ -27,27 +26,13 @@ struct HomeView: View {
                 LoadingOverlay(serviceName: selectedService.name)
                     .transition(.opacity.animation(.easeInOut(duration: 0.3)))
             }
-
-            if isMenuExpanded {
-                Color.clear
-                    .contentShape(Rectangle())
-                    .ignoresSafeArea()
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                            isMenuExpanded = false
-                        }
-                    }
-                    .transition(.opacity)
-            }
         }
-        .overlay(alignment: .trailing) {
-            FloatingActionMenu(
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            GlassBottomBar(
                 services: serviceManager.visibleServices,
                 selectedService: $selectedService,
-                isExpanded: $isMenuExpanded,
                 onNavigate: handleNavigate
             )
-            .padding(.trailing, Metric.fabTrailingPadding)
         }
         .navigationBarHidden(true)
         .onAppear {
@@ -65,17 +50,99 @@ struct HomeView: View {
 
     // MARK: - Actions
     private func handleNavigate(to target: ActiveSheet) {
-        withAnimation(.spring(response: 0.25)) { isMenuExpanded = false }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            activeSheet = target
-        }
+        activeSheet = target
     }
 
-    /// 当前服务被禁用/删除时，自动回退到可见服务
     private func validateSelectedService() {
         let visible = serviceManager.visibleServices
         guard !visible.contains(where: { $0.id == selectedService.id }) else { return }
         selectedService = visible.first ?? serviceManager.defaultService
+    }
+}
+
+// MARK: - Liquid Glass 底部工具条
+struct GlassBottomBar: View {
+    let services: [AIService]
+    @Binding var selectedService: AIService
+    let onNavigate: (HomeView.ActiveSheet) -> Void
+
+    private let buttonSize: CGFloat = 38
+
+    var body: some View {
+        GlassEffectContainer(spacing: 10) {
+            HStack(spacing: 8) {
+                serviceMenu
+
+                Spacer(minLength: 0)
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    onNavigate(.files)
+                } label: {
+                    Image(systemName: "folder.fill")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(.primary)
+                        .frame(width: buttonSize, height: buttonSize)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .glassEffect(.regular.interactive(), in: .circle)
+                .accessibilityLabel("文件")
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    onNavigate(.settings)
+                } label: {
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(.primary)
+                        .frame(width: buttonSize, height: buttonSize)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .glassEffect(.regular.interactive(), in: .circle)
+                .accessibilityLabel("设置")
+            }
+            .padding(.horizontal, 10)
+            .padding(.top, 4)
+            .padding(.bottom, 2)
+        }
+    }
+
+    // MARK: 服务菜单
+    private var serviceMenu: some View {
+        Menu {
+            ForEach(services) { service in
+                Button {
+                    UISelectionFeedbackGenerator().selectionChanged()
+                    selectedService = service
+                } label: {
+                    HStack {
+                        Text(service.name)
+                        if service.id == selectedService.id {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Text(selectedService.name)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 14)
+            .frame(height: buttonSize)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .glassEffect(.regular.interactive(), in: .capsule)
+        .accessibilityLabel("切换 AI 服务，当前 \(selectedService.name)")
     }
 }
 
@@ -120,7 +187,7 @@ private struct LoadingOverlay: View {
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(.ultraThinMaterial)
+        .background(.regularMaterial)
         .onAppear { isAnimating = true }
     }
 }
