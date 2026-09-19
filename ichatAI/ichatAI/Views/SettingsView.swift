@@ -189,7 +189,7 @@ struct SettingsView: View {
             SettingsCardHeader(
                 icon: "sparkles",
                 iconColor: .purple,
-                title: "AI 和存储管理"
+                title: "AI和存储管理"
             )
 
             // AI 服务管理
@@ -197,10 +197,8 @@ struct SettingsView: View {
                 path.append(SettingsRoute.aiService)
             } label: {
                 SettingsRow(
-                    icon: "square.grid.2x2.fill",
-                    iconColor: Color(red: 0.55, green: 0.35, blue: 0.90),
                     title: "服务管理",
-                    subtitle: "管理内置与自定义 AI 服务",
+                    subtitle: "管理内置与自定义服务",
                     badge: nil
                 )
             }
@@ -213,8 +211,6 @@ struct SettingsView: View {
                 path.append(SettingsRoute.storage)
             } label: {
                 SettingsRow(
-                    icon: "internaldrive.fill",
-                    iconColor: Color(red: 0.20, green: 0.62, blue: 0.52),
                     title: "存储管理",
                     subtitle: "扫描并清理 WebKit 缓存",
                     badge: nil
@@ -240,8 +236,6 @@ struct SettingsView: View {
                 path.append(SettingsRoute.logs)
             } label: {
                 SettingsRow(
-                    icon: "terminal.fill",
-                    iconColor: Color(red: 0.35, green: 0.42, blue: 0.55),
                     title: "调试日志",
                     subtitle: "查看应用运行日志",
                     badge: nil
@@ -256,8 +250,6 @@ struct SettingsView: View {
                 path.append(SettingsRoute.about)
             } label: {
                 SettingsRow(
-                    icon: "info.circle.fill",
-                    iconColor: .blue,
                     title: "关于 iChatAI",
                     subtitle: "版本、开发者与更多信息",
                     badge: nil
