@@ -169,9 +169,14 @@ class WebCacheManager: ObservableObject {
             }
         }
         
-        // 兜底：API 未返回时仍扫描 DiskCache
+        // 兜底：API 未返回任何 record 时，主动扫描几类常见缓存
         if existingTypes.isEmpty {
-            existingTypes.insert(WKWebsiteDataTypeDiskCache)
+            existingTypes.formUnion([
+                WKWebsiteDataTypeDiskCache,
+                WKWebsiteDataTypeCookies,
+                WKWebsiteDataTypeLocalStorage,
+                WKWebsiteDataTypeIndexedDBDatabases,
+            ])
         }
         
         var scannedPaths = Set<String>()            // 避免重复扫描同一路径
