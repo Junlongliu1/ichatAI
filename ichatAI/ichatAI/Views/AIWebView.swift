@@ -1,26 +1,19 @@
 // AIWebView.swift
 // AI 加载视图 — 完整优化版
-// 优化点：
-//  1. 实现 WKUIDelegate（target=_blank / window.open / JS 弹窗）
-//  2. 加载失败提示 + 错误分类
-//  3. 外链 scheme（mailto / tel / 其他 App）交给系统处理
-//  4. Blob 大文件保护（JS 端 + Swift 端双重限制）
-//  5. WebContent 崩溃重试上限，避免死循环
-//  6. WebView 配置补充（inline 播放 / 全屏 / JS 新窗口）
-//  7. estimatedProgress KVO 驱动进度条
-//  8. 按 reloadToken 支持外部触发重试
-//  9. 同步 App 主题到 WebView（仅传递 prefers-color-scheme 信号）
-
 import SwiftUI
 import WebKit
 
+// MARK: - 下载通知
+extension Notification.Name {
+    /// WebView 保存文件成功后广播，供文件页刷新
+    static let downloadedFileAdded = Notification.Name("ichatAI.downloadedFileAdded")
+}
+
 // MARK: - WebView 状态
-/// 每个 AI 服务独立维护的 WebView 状态
 struct WebViewState {
     var isLoading: Bool = true
     var progress: Double = 0
     var error: String?
-    /// 外部修改此 token 可以触发一次强制重新加载（用于"重试"）
     var reloadToken: UUID = UUID()
 }
 
@@ -28,8 +21,9 @@ struct WebViewState {
 struct AIWebView: UIViewRepresentable {
     @Binding var state: WebViewState
     let currentURL: String
-    /// 当前 App 的主题样式，用于同步给 WKWebView
     let uiStyle: UIUserInterfaceStyle
+    /// 当前 WebView 是否为屏幕上正在显示的活跃视图
+    let isActive: Bool
 
     // MARK: UIViewRepresentable
     func makeCoordinator() -> Coordinator {
@@ -38,15 +32,12 @@ struct AIWebView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
-
-        // 允许内联播放视频（默认 iOS 会强制全屏）
         config.allowsInlineMediaPlayback = true
-        // 允许元素进入全屏（视频 / 图片预览）
         config.preferences.isElementFullscreenEnabled = true
-        // 允许 JS 用 window.open 打开新窗口（配合 WKUIDelegate）
         config.preferences.javaScriptCanOpenWindowsAutomatically = true
-        // 允许媒体自动播放（很多 AI 网页需要）
-        config.mediaTypesRequiringUserActionForPlayback = []
+
+        // 音频需要用户手势才能播放，避免 AI 网页自动播放语音打扰用户
+        config.mediaTypesRequiringUserActionForPlayback = [.audio]
 
         config.userContentController.add(
             context.coordinator,
@@ -54,15 +45,18 @@ struct AIWebView: UIViewRepresentable {
         )
 
         let webView = WKWebView(frame: .zero, configuration: config)
-
-        // 创建时同步主题
         webView.overrideUserInterfaceStyle = uiStyle
-
+        webView.isInspectable = Self.isInspectable
         webView.customUserAgent = Self.userAgent
         webView.allowsBackForwardNavigationGestures = true
         webView.scrollView.contentInsetAdjustmentBehavior = .automatic
         webView.navigationDelegate = context.coordinator
         webView.uiDelegate = context.coordinator
+
+        context.coordinator.isActive = isActive
+        if !isActive {
+            webView.setAllMediaPlaybackSuspended(true, completionHandler: nil)
+        }
 
         context.coordinator.startObserving(webView)
         context.coordinator.load(
@@ -74,9 +68,14 @@ struct AIWebView: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: WKWebView, context: Context) {
-        // 主题变化时同步给 WebView，不注入 JS
         if uiView.overrideUserInterfaceStyle != uiStyle {
             uiView.overrideUserInterfaceStyle = uiStyle
+        }
+
+        // 非活跃时暂停媒体播放，活跃时恢复
+        if context.coordinator.isActive != isActive {
+            context.coordinator.isActive = isActive
+            uiView.setAllMediaPlaybackSuspended(!isActive, completionHandler: nil)
         }
 
         context.coordinator.load(
@@ -88,12 +87,22 @@ struct AIWebView: UIViewRepresentable {
 
     static func dismantleUIView(_ uiView: WKWebView, coordinator: Coordinator) {
         uiView.stopLoading()
+        uiView.setAllMediaPlaybackSuspended(true, completionHandler: nil)
         coordinator.stopObserving()
         uiView.configuration.userContentController
             .removeScriptMessageHandler(forName: Coordinator.downloadMessageName)
     }
 
-    // MARK: - User-Agent（保持最新 Chrome 版本号）
+    // MARK: - Debug / Release 区分：仅 Debug 允许 Safari 检查
+    private static let isInspectable: Bool = {
+        #if DEBUG
+        return true
+        #else
+        return false
+        #endif
+    }()
+
+    // MARK: - User-Agent
     private static let userAgent: String = {
         let osVersion = UIDevice.current.systemVersion.replacingOccurrences(of: ".", with: "_")
         return "Mozilla/5.0 (iPhone; CPU iPhone OS \(osVersion) like Mac OS X) "
@@ -109,10 +118,17 @@ extension AIWebView {
 
         @Binding var state: WebViewState
 
+        /// 由 updateUIView 维护
+        var isActive: Bool = true
+
         private var currentServiceURL: String = ""
         private var lastReloadToken: UUID?
-        private var observation: NSKeyValueObservation?
         private var crashCount = 0
+
+        // 观察者
+        private var observation: NSKeyValueObservation?
+        private var bgObserver: NSObjectProtocol?
+        private var fgObserver: NSObjectProtocol?
 
         /// 单个 Blob 允许的最大字节数（Swift 端最终防线）
         private let maxBlobSize: Int64 = 20 * 1024 * 1024 // 20 MB
@@ -123,20 +139,44 @@ extension AIWebView {
             self._state = state
         }
 
-        // MARK: - KVO: estimatedProgress
+        // MARK: - KVO + 前后台
         func startObserving(_ webView: WKWebView) {
             observation = webView.observe(\.estimatedProgress, options: [.new]) { [weak self] webView, _ in
                 guard let self else { return }
                 let value = webView.estimatedProgress
                 DispatchQueue.main.async {
-                    self.state.progress = value
+                    // 节流，避免频繁触发 SwiftUI 更新
+                    let old = self.state.progress
+                    if abs(old - value) > 0.01 || value >= 1.0 {
+                        self.state.progress = value
+                    }
                 }
+            }
+
+            bgObserver = NotificationCenter.default.addObserver(
+                forName: UIApplication.didEnterBackgroundNotification,
+                object: nil, queue: .main
+            ) { [weak webView] _ in
+                webView?.setAllMediaPlaybackSuspended(true, completionHandler: nil)
+            }
+
+            fgObserver = NotificationCenter.default.addObserver(
+                forName: UIApplication.willEnterForegroundNotification,
+                object: nil, queue: .main
+            ) { [weak self, weak webView] _ in
+                guard let self, let webView else { return }
+                webView.setAllMediaPlaybackSuspended(!self.isActive, completionHandler: nil)
             }
         }
 
         func stopObserving() {
             observation?.invalidate()
             observation = nil
+
+            if let bgObserver { NotificationCenter.default.removeObserver(bgObserver) }
+            if let fgObserver { NotificationCenter.default.removeObserver(fgObserver) }
+            bgObserver = nil
+            fgObserver = nil
         }
 
         // MARK: - 统一加载入口
@@ -169,18 +209,37 @@ extension AIWebView {
         }
 
         // MARK: - WKScriptMessageHandler
+        // 支持字符串（旧格式）与字典（带文件名/类型）两种载荷
         func userContentController(
             _ userContentController: WKUserContentController,
             didReceive message: WKScriptMessage
         ) {
-            guard message.name == Self.downloadMessageName,
-                  let dataUri = message.body as? String else { return }
-            saveDataURIToDisk(dataUri)
+            guard message.name == Self.downloadMessageName else { return }
+
+            var dataUri: String?
+            var originalName: String?
+            var mimeType: String?
+
+            if let dict = message.body as? [String: Any] {
+                dataUri      = dict["dataURI"]  as? String
+                originalName = dict["fileName"] as? String
+                mimeType     = dict["mimeType"] as? String
+            } else if let str = message.body as? String {
+                dataUri = str
+            }
+
+            guard let uri = dataUri else {
+                AppLogError("[Blob] 未收到 dataURI")
+                return
+            }
+
+            saveDataURIToDisk(uri, originalName: originalName, mimeType: mimeType)
         }
 
         // MARK: - 保存 Blob 到沙盒
-        private func saveDataURIToDisk(_ dataUri: String) {
-            // 快速拒绝明显过大的 base64（base64 长度 ≈ 原始大小 × 4/3）
+        private func saveDataURIToDisk(_ dataUri: String,
+                                       originalName: String?,
+                                       mimeType: String?) {
             let maxBase64Length = Int(maxBlobSize) * 4 / 3 + 64
             guard dataUri.count <= maxBase64Length else {
                 AppLogError("[Blob] 数据过大，已拒绝（base64 长度 \(dataUri.count)，上限 \(maxBase64Length)）")
@@ -211,20 +270,54 @@ extension AIWebView {
                     return
                 }
 
-                let ext = Self.fileExtension(for: meta)
-                let fileName = "doubao_\(Int(Date().timeIntervalSince1970)).\(ext)"
+                // 优先用 mimeType，其次 meta
+                let ext = Self.fileExtension(for: mimeType ?? meta)
+
+                // 统一前缀 ai_，并尽量保留原始文件名
+                let timestamp = Int(Date().timeIntervalSince1970)
+                let baseName: String
+                if let originalName, !originalName.isEmpty {
+                    let trimmed = (originalName as NSString).deletingPathExtension
+                    baseName = Self.sanitize(trimmed)
+                } else {
+                    baseName = "\(timestamp)"
+                }
+                let fileName = "ai_\(timestamp)_\(baseName).\(ext)"
+
                 let fileURL = FileManager.default
                     .urls(for: .documentDirectory, in: .userDomainMask)[0]
                     .appendingPathComponent(fileName)
 
                 do {
                     try fileData.write(to: fileURL)
-                    AppLogInfo("文件已保存到 App 内部: \(fileURL.path)")
-                    AppLogInfo("大小: \(fileData.count / 1024)KB | 类型: \(ext)")
+                    // 文件保护
+                    try? FileManager.default.setAttributes(
+                        [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
+                        ofItemAtPath: fileURL.path
+                    )
+                    AppLogInfo("文件已保存: \(fileURL.lastPathComponent) (\(fileData.count / 1024)KB)")
+
+                    // 通知文件页刷新 + Toast 提示
+                    Task { @MainActor in
+                        NotificationCenter.default.post(
+                            name: .downloadedFileAdded,
+                            object: nil
+                        )
+                        ToastCenter.shared.show("已保存到文件")
+                    }
                 } catch {
                     AppLogError("写入沙盒失败: \(error.localizedDescription)")
                 }
             }
+        }
+
+        private static func sanitize(_ name: String) -> String {
+            let invalid = CharacterSet(charactersIn: "/\\:*?\"<>|")
+            let cleaned = name
+                .components(separatedBy: invalid)
+                .joined(separator: "_")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return cleaned.isEmpty ? "file" : cleaned
         }
 
         private static func fileExtension(for meta: String) -> String {
@@ -333,7 +426,7 @@ extension AIWebView {
                 return
             }
 
-            // Blob 下载：仅在用户主动点击链接时拦截为"下载"
+            // Blob 下载：仅在用户主动点击链接时拦截为“下载”
             // （页面内嵌的 blob 图片、视频预览不受影响，仍走正常导航）
             if scheme == "blob" && navigationAction.navigationType == .linkActivated {
                 injectNativeDownloader(webView: webView, blobUrl: url.absoluteString)
@@ -352,6 +445,7 @@ extension AIWebView {
 
             let maxSize = self.maxBlobSize
 
+            // 载荷改为字典，带上 mimeType（文件名一般拿不到，由 Swift 端生成）
             // JS 端提前拦截超大 Blob，避免把 base64 字符串搬过 bridge
             let js = """
             (function() {
@@ -368,7 +462,11 @@ extension AIWebView {
                     var reader = new FileReader();
                     reader.onloadend = function() {
                         window.webkit.messageHandlers.\(Self.downloadMessageName)
-                            .postMessage(reader.result);
+                            .postMessage({
+                                dataURI: reader.result,
+                                fileName: null,
+                                mimeType: blob.type || ''
+                            });
                     };
                     reader.readAsDataURL(blob);
                 };

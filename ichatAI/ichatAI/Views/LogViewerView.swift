@@ -367,28 +367,6 @@ private struct FloatingCapsuleButtonStyle: ButtonStyle {
     }
 }
 
-// MARK: - Toast
-
-struct ToastView: View {
-    let message: String
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundColor(.green)
-                .font(.system(size: 14))
-
-            Text(message)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundColor(.primary)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .glassEffect(.regular, in: .capsule)
-        .shadow(color: .black.opacity(0.08), radius: 8, y: 2)
-    }
-}
-
 #Preview {
     NavigationStack {
         LogViewerView()

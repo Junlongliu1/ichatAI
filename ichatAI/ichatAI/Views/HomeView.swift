@@ -1,25 +1,21 @@
 // HomeView.swift
-// 首页主视图 — iOS 26+ Liquid Glass 设计
-// 优化点：
-//  1. 每个服务独立 WebView 状态，切换不重建
-//  2. 顶部加载进度条
-//  3. 加载失败错误页 + 重试
 import SwiftUI
 import UIKit
 
 struct HomeView: View {
-    @StateObject private var serviceManager = AIServiceManager.shared
-
-    /// 监听设置页中的主题，用于同步给 WebView
-    @AppStorage("appTheme") private var appThemeRaw: String = AppTheme.system.rawValue
+    private let serviceManager = AIServiceManager.shared
+    private let themeManager = ThemeManager.shared
+    private let network = NetworkMonitor.shared
 
     @State private var selectedService: AIService
     @State private var activeSheet: ActiveSheet?
 
-    /// 每个服务独立的状态，切换服务不丢失
     @State private var serviceStates: [String: WebViewState] = [:]
-    /// 已访问过的服务 ID（保持顺序，用于 ZStack 渲染）
     @State private var visitedServiceIDs: [String] = []
+    /// B6：ID → AIService 索引，避免每次渲染都 first(where:)
+    @State private var serviceIndex: [String: AIService] = [:]
+
+    private let maxCachedWebViews = 3
 
     enum ActiveSheet: Identifiable {
         case files, settings
@@ -33,32 +29,25 @@ struct HomeView: View {
         _serviceStates = State(initialValue: [defaultService.id: WebViewState()])
     }
 
-    /// 当前应传给 WebView 的原生样式
-    private var currentUIStyle: UIUserInterfaceStyle {
-        (AppTheme(rawValue: appThemeRaw) ?? .system).uiStyle
-    }
-
-    /// 当前选中服务的状态
     private var currentState: WebViewState {
         serviceStates[selectedService.id] ?? WebViewState()
     }
 
     var body: some View {
         ZStack {
-            // 已访问服务的 WebView，按顺序渲染，只显示当前选中的那个
             ForEach(visitedServiceIDs, id: \.self) { serviceID in
-                if let service = serviceManager.allServices.first(where: { $0.id == serviceID }) {
+                if let service = serviceIndex[serviceID] {
                     AIWebView(
                         state: stateBinding(for: serviceID),
                         currentURL: service.url,
-                        uiStyle: currentUIStyle
+                        uiStyle: themeManager.current.uiStyle,
+                        isActive: serviceID == selectedService.id
                     )
                     .opacity(serviceID == selectedService.id ? 1 : 0)
                     .allowsHitTesting(serviceID == selectedService.id)
                 }
             }
 
-            // 加载指示器（仅在尚无进度时显示）
             if currentState.isLoading
                 && currentState.error == nil
                 && currentState.progress < 0.1 {
@@ -66,22 +55,28 @@ struct HomeView: View {
                     .transition(.opacity.animation(.easeInOut(duration: 0.3)))
             }
 
-            // 错误覆盖层
             if let error = currentState.error {
                 ErrorOverlay(message: error, onRetry: retry)
                     .transition(.opacity.animation(.easeInOut(duration: 0.25)))
             }
         }
         .safeAreaInset(edge: .top, spacing: 0) {
-            // 顶部加载进度条
-            if currentState.isLoading
-                && currentState.progress > 0.05
-                && currentState.progress < 1.0 {
-                ProgressView(value: currentState.progress)
-                    .progressViewStyle(.linear)
-                    .tint(.accentColor)
-                    .background(.ultraThinMaterial)
+            VStack(spacing: 0) {
+                if !network.isOnline {
+                    OfflineBanner()
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+
+                if currentState.isLoading
+                    && currentState.progress > 0.05
+                    && currentState.progress < 1.0 {
+                    ProgressView(value: currentState.progress)
+                        .progressViewStyle(.linear)
+                        .tint(.accentColor)
+                        .background(.ultraThinMaterial)
+                }
             }
+            .animation(.easeInOut(duration: 0.25), value: network.isOnline)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             GlassBottomBar(
@@ -92,6 +87,11 @@ struct HomeView: View {
         }
         .navigationBarHidden(true)
         .onAppear {
+            rebuildServiceIndex()
+            validateSelectedService()
+        }
+        .onChange(of: serviceManager.allServices.map(\.id)) { _, _ in
+            rebuildServiceIndex()
             validateSelectedService()
         }
         .onChange(of: serviceManager.visibleServices.map(\.id)) { _, _ in
@@ -100,14 +100,22 @@ struct HomeView: View {
         .onChange(of: selectedService) { _, newValue in
             ensureVisited(newValue)
         }
+        .onReceive(NotificationCenter.default.publisher(
+            for: UIApplication.didReceiveMemoryWarningNotification
+        )) { _ in
+            handleMemoryWarning()
+        }
         .fullScreenCover(item: $activeSheet) { sheet in
-            FullScreenPageContainer(sheet: sheet) {
-                activeSheet = nil
-            }
+            FullScreenPageContainer(sheet: sheet) { activeSheet = nil }
         }
     }
 
-    // MARK: - State binding
+    private func rebuildServiceIndex() {
+        var idx: [String: AIService] = [:]
+        for s in serviceManager.allServices { idx[s.id] = s }
+        serviceIndex = idx
+    }
+
     private func stateBinding(for serviceID: String) -> Binding<WebViewState> {
         Binding(
             get: { serviceStates[serviceID] ?? WebViewState() },
@@ -115,17 +123,28 @@ struct HomeView: View {
         )
     }
 
-    /// 首次访问某服务时，懒加载地初始化状态并加入渲染列表
     private func ensureVisited(_ service: AIService) {
-        if !visitedServiceIDs.contains(service.id) {
-            visitedServiceIDs.append(service.id)
-        }
+        visitedServiceIDs.removeAll { $0 == service.id }
+        visitedServiceIDs.append(service.id)
         if serviceStates[service.id] == nil {
             serviceStates[service.id] = WebViewState()
         }
+        while visitedServiceIDs.count > maxCachedWebViews {
+            guard let oldest = visitedServiceIDs.first, oldest != selectedService.id else { break }
+            visitedServiceIDs.removeFirst()
+            serviceStates[oldest] = nil
+        }
     }
 
-    // MARK: - Actions
+    private func handleMemoryWarning() {
+        AppLogWarn("[HomeView] 内存警告，回收非当前 WebView")
+        let currentID = selectedService.id
+        for id in visitedServiceIDs where id != currentID {
+            serviceStates[id] = nil
+        }
+        visitedServiceIDs = [currentID]
+    }
+
     private func handleNavigate(to target: ActiveSheet) {
         activeSheet = target
     }
@@ -136,7 +155,6 @@ struct HomeView: View {
         selectedService = visible.first ?? serviceManager.defaultService
     }
 
-    /// 触发当前服务重新加载
     private func retry() {
         guard var state = serviceStates[selectedService.id] else { return }
         state.reloadToken = UUID()
@@ -147,7 +165,7 @@ struct HomeView: View {
     }
 }
 
-// MARK: - Liquid Glass 底部工具条
+// MARK: - 底部工具条（保持不变）
 struct GlassBottomBar: View {
     let services: [AIService]
     @Binding var selectedService: AIService
@@ -159,7 +177,6 @@ struct GlassBottomBar: View {
         GlassEffectContainer(spacing: 10) {
             HStack(spacing: 8) {
                 serviceMenu
-
                 Spacer(minLength: 0)
 
                 Button {
@@ -196,7 +213,6 @@ struct GlassBottomBar: View {
         }
     }
 
-    // MARK: 服务菜单
     private var serviceMenu: some View {
         Menu {
             ForEach(services) { service in
@@ -233,24 +249,26 @@ struct GlassBottomBar: View {
     }
 }
 
-// MARK: - 全屏页面容器
+// MARK: - 全屏容器（去嵌套 NavigationStack）
 private struct FullScreenPageContainer: View {
     let sheet: HomeView.ActiveSheet
     let onDismiss: () -> Void
 
     var body: some View {
-        NavigationStack {
-            Group {
-                switch sheet {
-                case .files:    FilesTabView(onDismiss: onDismiss)
-                case .settings: SettingsView(onDismiss: onDismiss)
+        Group {
+            switch sheet {
+            case .files:
+                NavigationStack {
+                    FilesTabView(onDismiss: onDismiss)
                 }
+            case .settings:
+                SettingsView(onDismiss: onDismiss)
             }
         }
     }
 }
 
-// MARK: - 加载动画覆盖层
+// MARK: - Loading / Error（保持不变）
 private struct LoadingOverlay: View {
     let serviceName: String
     @State private var isAnimating = false
@@ -279,7 +297,6 @@ private struct LoadingOverlay: View {
     }
 }
 
-// MARK: - 错误覆盖层
 private struct ErrorOverlay: View {
     let message: String
     let onRetry: () -> Void

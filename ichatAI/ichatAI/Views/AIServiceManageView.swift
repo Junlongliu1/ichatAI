@@ -1,39 +1,22 @@
-//
-//  AIServiceManageView.swift
-//  AI 服务管理 —— iOS 26 液态玻璃
-//
-
+// AIServiceManageView.swift
 import SwiftUI
 
-// MARK: - 布局常量
-
-private enum ManageLayout {
-    static let cardRadius: CGFloat = 22
-    static let cardSpacing: CGFloat = 14
-    static let horizontalPadding: CGFloat = 16
-    static let rowHorizontalPadding: CGFloat = 16
-    static let rowVerticalPadding: CGFloat = 12
-    static let dividerLeading: CGFloat = 16   // 无图标后，分隔线不再缩进
-}
-
-// MARK: - 服务管理
-
 struct AIServiceManageView: View {
-    @ObservedObject private var manager = AIServiceManager.shared
+    private let manager = AIServiceManager.shared
     @State private var showAddSheet = false
+    @State private var editTarget: AIService?
     @State private var serviceToDelete: AIService?
-    /// 内置服务卡片展开状态（默认收起）
     @State private var isBuiltInExpanded = false
 
     var body: some View {
         ScrollView {
-            LazyVStack(spacing: ManageLayout.cardSpacing) {
+            LazyVStack(spacing: DSLayout.cardSpacing) {
                 preferenceCard
                 builtInServicesCard
                 customServicesCard
                 footerNote
             }
-            .padding(.horizontal, ManageLayout.horizontalPadding)
+            .padding(.horizontal, DSLayout.horizontalPadding)
             .padding(.top, 8)
             .padding(.bottom, 24)
         }
@@ -43,6 +26,9 @@ struct AIServiceManageView: View {
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showAddSheet) {
             AddCustomServiceView()
+        }
+        .sheet(item: $editTarget) { service in
+            EditCustomServiceView(service: service)
         }
         .alert(
             "删除自定义服务",
@@ -54,9 +40,7 @@ struct AIServiceManageView: View {
         ) { service in
             Button("取消", role: .cancel) { serviceToDelete = nil }
             Button("删除", role: .destructive) {
-                withAnimation(.spring(response: 0.35)) {
-                    manager.deleteCustomService(service)
-                }
+                withAnimation(.spring(response: 0.35)) { manager.deleteCustomService(service) }
                 serviceToDelete = nil
             }
         } message: { service in
@@ -64,15 +48,10 @@ struct AIServiceManageView: View {
         }
     }
 
-    // MARK: - 服务偏好（默认启动 + 首页显示）
-
+    // MARK: - 偏好卡
     private var preferenceCard: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SettingsCardHeader(
-                icon: "slider.horizontal.3",
-                iconColor: .blue,
-                title: "服务偏好"
-            )
+            SettingsCardHeader(icon: "slider.horizontal.3", iconColor: .blue, title: "服务偏好")
 
             NavigationLink {
                 DefaultServiceSelectionView()
@@ -80,8 +59,7 @@ struct AIServiceManageView: View {
                 PreferenceRow(
                     title: "默认启动服务",
                     subtitle: "打开 App 时加载",
-                    value: manager.defaultService.name,
-                    accessoryIcon: "chevron.right"
+                    value: manager.defaultService.name
                 )
             }
             .buttonStyle(GlassRowButtonStyle())
@@ -94,21 +72,18 @@ struct AIServiceManageView: View {
                 PreferenceRow(
                     title: "首页显示服务",
                     subtitle: "底部切换栏中显示的服务",
-                    value: "\(manager.visibleServiceIDs.count)/\(manager.allServices.count)",
-                    accessoryIcon: "chevron.right"
+                    value: "\(manager.visibleServiceIDs.count)/\(manager.allServices.count)"
                 )
             }
             .buttonStyle(GlassRowButtonStyle())
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular, in: .rect(cornerRadius: ManageLayout.cardRadius))
+        .glassEffect(.regular, in: .rect(cornerRadius: DSLayout.cardRadius))
     }
 
-    // MARK: - 内置服务卡（可折叠，默认收起）
-
+    // MARK: - 内置服务卡
     private var builtInServicesCard: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // 可点击的折叠标题
             Button {
                 UISelectionFeedbackGenerator().selectionChanged()
                 withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
@@ -119,13 +94,11 @@ struct AIServiceManageView: View {
                     Image(systemName: "shippingbox.fill")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(.purple)
-
                     Text("内置服务")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(.secondary)
                         .textCase(.uppercase)
                         .tracking(0.5)
-
                     Text("\(AIService.builtInServices.count)")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(.secondary)
@@ -133,22 +106,19 @@ struct AIServiceManageView: View {
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
                         .background(Capsule().fill(Color.secondary.opacity(0.12)))
-
                     Spacer()
-
                     Image(systemName: "chevron.right")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(.secondary.opacity(0.5))
                         .rotationEffect(.degrees(isBuiltInExpanded ? 90 : 0))
                 }
-                .padding(.horizontal, ManageLayout.rowHorizontalPadding)
+                .padding(.horizontal, DSLayout.rowHorizontalPadding)
                 .padding(.top, 14)
                 .padding(.bottom, isBuiltInExpanded ? 10 : 14)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
-            // 展开内容
             if isBuiltInExpanded {
                 ForEach(Array(AIService.builtInServices.enumerated()), id: \.element.id) { idx, service in
                     BuiltInServiceRow(
@@ -156,7 +126,6 @@ struct AIServiceManageView: View {
                         isDefault: service.id == manager.defaultServiceID,
                         isVisible: manager.visibleServiceIDs.contains(service.id)
                     )
-
                     if idx < AIService.builtInServices.count - 1 {
                         SettingsRowDivider()
                     }
@@ -165,18 +134,13 @@ struct AIServiceManageView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular, in: .rect(cornerRadius: ManageLayout.cardRadius))
+        .glassEffect(.regular, in: .rect(cornerRadius: DSLayout.cardRadius))
     }
 
     // MARK: - 自定义服务
-
     private var customServicesCard: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SettingsCardHeader(
-                icon: "wand.and.stars",
-                iconColor: .orange,
-                title: "自定义服务"
-            )
+            SettingsCardHeader(icon: "wand.and.stars", iconColor: .orange, title: "自定义服务")
 
             if manager.customServices.isEmpty {
                 emptyCustomState
@@ -184,18 +148,21 @@ struct AIServiceManageView: View {
                 ForEach(Array(manager.customServices.enumerated()), id: \.element.id) { idx, service in
                     CustomServiceRow(service: service)
                         .contextMenu {
-                            Button(role: .destructive) {
-                                serviceToDelete = service
-                            } label: {
+                            Button { editTarget = service } label: {
+                                Label("编辑", systemImage: "pencil")
+                            }
+                            Button(role: .destructive) { serviceToDelete = service } label: {
                                 Label("删除", systemImage: "trash.fill")
                             }
                         }
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button(role: .destructive) {
-                                serviceToDelete = service
-                            } label: {
+                            Button(role: .destructive) { serviceToDelete = service } label: {
                                 Label("删除", systemImage: "trash.fill")
                             }
+                            Button { editTarget = service } label: {
+                                Label("编辑", systemImage: "pencil")
+                            }
+                            .tint(.blue)
                         }
 
                     if idx < manager.customServices.count - 1 {
@@ -211,25 +178,22 @@ struct AIServiceManageView: View {
                 showAddSheet = true
             } label: {
                 HStack(spacing: 12) {
-                    // 去掉图标，仅保留文字
                     Text("添加自定义服务")
                         .font(.system(size: 15, weight: .medium))
                         .foregroundColor(.primary)
-
                     Spacer()
-
                     Image(systemName: "chevron.right")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(.secondary.opacity(0.5))
                 }
-                .padding(.horizontal, ManageLayout.rowHorizontalPadding)
-                .padding(.vertical, ManageLayout.rowVerticalPadding)
+                .padding(.horizontal, DSLayout.rowHorizontalPadding)
+                .padding(.vertical, DSLayout.rowVerticalPadding)
                 .contentShape(Rectangle())
             }
             .buttonStyle(GlassRowButtonStyle())
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular, in: .rect(cornerRadius: ManageLayout.cardRadius))
+        .glassEffect(.regular, in: .rect(cornerRadius: DSLayout.cardRadius))
     }
 
     private var emptyCustomState: some View {
@@ -238,22 +202,18 @@ struct AIServiceManageView: View {
                 Text("还没有自定义服务")
                     .font(.system(size: 14))
                     .foregroundColor(.secondary)
-
                 Text("添加你常用的服务网址")
                     .font(.system(size: 12))
                     .foregroundColor(.secondary.opacity(0.7))
             }
-
             Spacer()
         }
-        .padding(.horizontal, ManageLayout.rowHorizontalPadding)
+        .padding(.horizontal, DSLayout.rowHorizontalPadding)
         .padding(.vertical, 14)
     }
 
-    // MARK: - Footer
-
     private var footerNote: some View {
-        Text("长按或左滑自定义服务可删除。\n自定义服务与内置服务共享默认与显示配置。")
+        Text("长按或左滑自定义服务可编辑 / 删除。\n自定义服务与内置服务共享默认与显示配置。")
             .font(.system(size: 12))
             .foregroundColor(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -263,45 +223,33 @@ struct AIServiceManageView: View {
     }
 }
 
-// MARK: - 偏好行（无图标）
-
+// MARK: - 偏好行
 private struct PreferenceRow: View {
     let title: String
     let subtitle: String
     let value: String
-    let accessoryIcon: String
 
     var body: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(.primary)
-                Text(subtitle)
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
+                Text(title).font(.system(size: 15, weight: .medium)).foregroundColor(.primary)
+                Text(subtitle).font(.system(size: 12)).foregroundColor(.secondary).lineLimit(1)
             }
-
             Spacer(minLength: 8)
-
             Text(value)
                 .font(.system(size: 13, weight: .medium).monospacedDigit())
                 .foregroundColor(.secondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
-
-            Image(systemName: accessoryIcon)
+            Image(systemName: "chevron.right")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundColor(.secondary.opacity(0.5))
         }
-        .padding(.horizontal, ManageLayout.rowHorizontalPadding)
-        .padding(.vertical, ManageLayout.rowVerticalPadding)
+        .padding(.horizontal, DSLayout.rowHorizontalPadding)
+        .padding(.vertical, DSLayout.rowVerticalPadding)
         .contentShape(Rectangle())
     }
 }
-
-// MARK: - 内置服务行（无图标）
 
 private struct BuiltInServiceRow: View {
     let service: AIService
@@ -311,53 +259,36 @@ private struct BuiltInServiceRow: View {
     var body: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(service.name)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(.primary)
-
+                Text(service.name).font(.system(size: 15, weight: .medium)).foregroundColor(.primary)
                 Text(service.url)
                     .font(.system(size: 12))
                     .foregroundColor(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
-
             Spacer(minLength: 0)
-
             HStack(spacing: 4) {
-                if isDefault {
-                    ServiceTag(text: "默认", color: .blue)
-                }
-                if isVisible {
-                    ServiceTag(text: "显示", color: .green)
-                }
+                if isDefault { ServiceTag(text: "默认", color: .blue) }
+                if isVisible { ServiceTag(text: "显示", color: .green) }
             }
         }
-        .padding(.horizontal, ManageLayout.rowHorizontalPadding)
-        .padding(.vertical, ManageLayout.rowVerticalPadding)
-        .contentShape(Rectangle())
+        .padding(.horizontal, DSLayout.rowHorizontalPadding)
+        .padding(.vertical, DSLayout.rowVerticalPadding)
     }
 }
-
-// MARK: - 服务标签
 
 private struct ServiceTag: View {
     let text: String
     let color: Color
-
     var body: some View {
         Text(text)
             .font(.system(size: 9, weight: .bold))
             .foregroundColor(color)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
-            .background(
-                Capsule().fill(color.opacity(0.14))
-            )
+            .background(Capsule().fill(color.opacity(0.14)))
     }
 }
-
-// MARK: - 自定义服务行
 
 private struct CustomServiceRow: View {
     let service: AIService
@@ -366,10 +297,7 @@ private struct CustomServiceRow: View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
-                    Text(service.name)
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundColor(.primary)
-
+                    Text(service.name).font(.system(size: 15, weight: .medium)).foregroundColor(.primary)
                     Text("自定义")
                         .font(.system(size: 9, weight: .bold))
                         .foregroundColor(.white)
@@ -377,34 +305,31 @@ private struct CustomServiceRow: View {
                         .padding(.vertical, 1)
                         .background(Color.orange, in: Capsule())
                 }
-
                 Text(service.url)
                     .font(.system(size: 12))
                     .foregroundColor(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
-
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, ManageLayout.rowHorizontalPadding)
-        .padding(.vertical, ManageLayout.rowVerticalPadding)
+        .padding(.horizontal, DSLayout.rowHorizontalPadding)
+        .padding(.vertical, DSLayout.rowVerticalPadding)
         .contentShape(Rectangle())
     }
 }
 
 // MARK: - 默认启动服务选择
-
 private struct DefaultServiceSelectionView: View {
-    @ObservedObject private var manager = AIServiceManager.shared
+    private let manager = AIServiceManager.shared
 
     var body: some View {
         ScrollView {
-            LazyVStack(spacing: ManageLayout.cardSpacing) {
+            LazyVStack(spacing: DSLayout.cardSpacing) {
                 serviceListCard
                 hintNote
             }
-            .padding(.horizontal, ManageLayout.horizontalPadding)
+            .padding(.horizontal, DSLayout.horizontalPadding)
             .padding(.top, 8)
             .padding(.bottom, 24)
         }
@@ -416,17 +341,13 @@ private struct DefaultServiceSelectionView: View {
 
     private var serviceListCard: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SettingsCardHeader(
-                icon: "bolt.fill",
-                iconColor: .blue,
-                title: "选择服务"
-            )
+            SettingsCardHeader(icon: "bolt.fill", iconColor: .blue, title: "选择服务")
 
             ForEach(Array(manager.allServices.enumerated()), id: \.element.id) { idx, service in
                 Button {
                     UISelectionFeedbackGenerator().selectionChanged()
                     withAnimation(.easeInOut(duration: 0.2)) {
-                        manager.defaultServiceID = service.id
+                        manager.setDefaultService(service.id)
                     }
                 } label: {
                     selectionRow(for: service)
@@ -439,7 +360,7 @@ private struct DefaultServiceSelectionView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular, in: .rect(cornerRadius: ManageLayout.cardRadius))
+        .glassEffect(.regular, in: .rect(cornerRadius: DSLayout.cardRadius))
     }
 
     private var hintNote: some View {
@@ -462,52 +383,44 @@ private struct DefaultServiceSelectionView: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
-                    Text(service.name)
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundColor(.primary)
-
+                    Text(service.name).font(.system(size: 15, weight: .medium)).foregroundColor(.primary)
                     if !service.isBuiltIn {
                         Text("自定义")
                             .font(.system(size: 9, weight: .bold))
                             .foregroundColor(.white)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
+                            .padding(.horizontal, 5).padding(.vertical, 1)
                             .background(Color.orange, in: Capsule())
                     }
                 }
-
                 Text(service.url)
                     .font(.system(size: 12))
                     .foregroundColor(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                    .lineLimit(1).truncationMode(.middle)
             }
-
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, ManageLayout.rowHorizontalPadding)
-        .padding(.vertical, ManageLayout.rowVerticalPadding)
+        .padding(.horizontal, DSLayout.rowHorizontalPadding)
+        .padding(.vertical, DSLayout.rowVerticalPadding)
         .contentShape(Rectangle())
     }
 }
 
 // MARK: - 可见服务选择
-
 private struct VisibleServicesSelectionView: View {
-    @ObservedObject private var manager = AIServiceManager.shared
+    private let manager = AIServiceManager.shared
 
     private var isAllSelected: Bool {
-        !manager.allServices.isEmpty
-            && manager.visibleServiceIDs.count == manager.allServices.count
+        !manager.allServices.isEmpty &&
+        manager.visibleServiceIDs.count == manager.allServices.count
     }
 
     var body: some View {
         ScrollView {
-            LazyVStack(spacing: ManageLayout.cardSpacing) {
+            LazyVStack(spacing: DSLayout.cardSpacing) {
                 serviceListCard
                 selectionHint
             }
-            .padding(.horizontal, ManageLayout.horizontalPadding)
+            .padding(.horizontal, DSLayout.horizontalPadding)
             .padding(.top, 8)
             .padding(.bottom, 24)
         }
@@ -537,7 +450,7 @@ private struct VisibleServicesSelectionView: View {
             ForEach(Array(manager.allServices.enumerated()), id: \.element.id) { idx, service in
                 Button {
                     withAnimation(.easeInOut(duration: 0.2)) {
-                        toggleVisibility(for: service.id)
+                        manager.toggleVisibility(service.id)
                     }
                 } label: {
                     visibilityRow(for: service)
@@ -550,7 +463,7 @@ private struct VisibleServicesSelectionView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular, in: .rect(cornerRadius: ManageLayout.cardRadius))
+        .glassEffect(.regular, in: .rect(cornerRadius: DSLayout.cardRadius))
     }
 
     private var selectionHint: some View {
@@ -573,96 +486,136 @@ private struct VisibleServicesSelectionView: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
-                    Text(service.name)
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundColor(.primary)
-
+                    Text(service.name).font(.system(size: 15, weight: .medium)).foregroundColor(.primary)
                     if !service.isBuiltIn {
                         Text("自定义")
                             .font(.system(size: 9, weight: .bold))
                             .foregroundColor(.white)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
+                            .padding(.horizontal, 5).padding(.vertical, 1)
                             .background(Color.orange, in: Capsule())
                     }
                 }
-
                 Text(service.url)
                     .font(.system(size: 12))
                     .foregroundColor(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                    .lineLimit(1).truncationMode(.middle)
             }
-
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, ManageLayout.rowHorizontalPadding)
-        .padding(.vertical, ManageLayout.rowVerticalPadding)
+        .padding(.horizontal, DSLayout.rowHorizontalPadding)
+        .padding(.vertical, DSLayout.rowVerticalPadding)
         .contentShape(Rectangle())
-    }
-
-    private func toggleVisibility(for id: String) {
-        if manager.visibleServiceIDs.contains(id) {
-            guard manager.visibleServiceIDs.count > 1 else {
-                UINotificationFeedbackGenerator().notificationOccurred(.warning)
-                return
-            }
-            manager.visibleServiceIDs.remove(id)
-        } else {
-            manager.visibleServiceIDs.insert(id)
-        }
     }
 
     private func toggleAll() {
         withAnimation(.easeInOut(duration: 0.25)) {
             if isAllSelected {
                 if let first = manager.allServices.first?.id {
-                    manager.visibleServiceIDs = [first]
+                    manager.setVisible([first])
                 }
             } else {
-                manager.visibleServiceIDs = Set(manager.allServices.map(\.id))
+                manager.setVisible(Set(manager.allServices.map(\.id)))
             }
         }
     }
 }
 
-// MARK: - 添加自定义服务
-
+// MARK: - 添加 / 编辑（共用输入卡片）
 private struct AddCustomServiceView: View {
     @Environment(\.dismiss) private var dismiss
-    @ObservedObject private var manager = AIServiceManager.shared
+    private let manager = AIServiceManager.shared
 
     @State private var name = ""
     @State private var url = ""
 
-    // MARK: - 输入校验
+    var body: some View {
+        CustomServiceEditor(
+            title: "添加服务",
+            initialName: name,
+            initialURL: url,
+            existingID: nil,
+            onSave: { n, u in
+                manager.addCustomService(name: n, url: u)
+                dismiss()
+            },
+            onCancel: { dismiss() }
+        )
+    }
+}
+
+private struct EditCustomServiceView: View {
+    let service: AIService
+
+    @Environment(\.dismiss) private var dismiss
+    private let manager = AIServiceManager.shared
+
+    var body: some View {
+        CustomServiceEditor(
+            title: "编辑服务",
+            initialName: service.name,
+            initialURL: service.url,
+            existingID: service.id,
+            onSave: { n, u in
+                var updated = service
+                updated.name = n
+                updated.url = u
+                manager.updateCustomService(updated)
+                dismiss()
+            },
+            onCancel: { dismiss() }
+        )
+    }
+}
+
+private struct CustomServiceEditor: View {
+    let title: String
+    let initialName: String
+    let initialURL: String
+    let existingID: String?
+    let onSave: (String, String) -> Void
+    let onCancel: () -> Void
+
+    @State private var name: String
+    @State private var url: String
+
+    init(title: String,
+         initialName: String,
+         initialURL: String,
+         existingID: String?,
+         onSave: @escaping (String, String) -> Void,
+         onCancel: @escaping () -> Void) {
+        self.title = title
+        self.initialName = initialName
+        self.initialURL = initialURL
+        self.existingID = existingID
+        self.onSave = onSave
+        self.onCancel = onCancel
+        _name = State(initialValue: initialName)
+        _url = State(initialValue: initialURL)
+    }
 
     private var trimmedName: String {
         name.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private var normalizedURLString: String {
-        let trimmed = url.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return "" }
-        if trimmed.contains("://") { return trimmed }
-        return "https://" + trimmed
+        let t = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return "" }
+        return t.contains("://") ? t : "https://" + t
     }
 
     private var validatedURL: URL? {
-        guard
-            let parsed = URL(string: normalizedURLString),
-            let scheme = parsed.scheme?.lowercased(),
-            ["http", "https"].contains(scheme),
-            let host = parsed.host,
-            !host.isEmpty
-        else { return nil }
+        guard let parsed = URL(string: normalizedURLString),
+              let scheme = parsed.scheme?.lowercased(),
+              ["http", "https"].contains(scheme),
+              let host = parsed.host, !host.isEmpty else { return nil }
         return parsed
     }
 
     private var isDuplicate: Bool {
         guard let target = validatedURL?.absoluteString.lowercased() else { return false }
-        return manager.allServices.contains {
-            $0.url.lowercased() == target
+        return AIServiceManager.shared.allServices.contains {
+            $0.id != existingID && $0.url.lowercased() == target
         }
     }
 
@@ -671,14 +624,12 @@ private struct AddCustomServiceView: View {
     }
 
     private var urlHint: (text: String, color: Color)? {
-        let trimmed = url.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-
-        if validatedURL == nil {
-            return ("请输入合法的网址，例如 https://www.example.com", .red)
-        }
-        if isDuplicate {
-            return ("该网址已存在", .orange)
+        let t = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return nil }
+        if validatedURL == nil { return ("请输入合法的网址，例如 https://www.example.com", .red) }
+        if isDuplicate { return ("该网址已存在", .orange) }
+        if validatedURL?.scheme?.lowercased() == "http" {
+            return ("使用 HTTP 可能无法正常加载", .orange)
         }
         return ("将使用：\(validatedURL!.absoluteString)", .secondary)
     }
@@ -686,28 +637,29 @@ private struct AddCustomServiceView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                LazyVStack(spacing: ManageLayout.cardSpacing) {
+                LazyVStack(spacing: DSLayout.cardSpacing) {
                     inputCard
-                    if let hint = urlHint {
-                        hintCard(hint)
-                    }
+                    if let hint = urlHint { hintCard(hint) }
                 }
-                .padding(.horizontal, ManageLayout.horizontalPadding)
+                .padding(.horizontal, DSLayout.horizontalPadding)
                 .padding(.top, 8)
                 .padding(.bottom, 24)
             }
             .scrollEdgeEffectStyle(.soft, for: .all)
             .background(Color(.systemGroupedBackground))
-            .navigationTitle("添加服务")
+            .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") { dismiss() }
+                    Button("取消", action: onCancel)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("添加") { addService() }
-                        .fontWeight(.semibold)
-                        .disabled(!isValid)
+                    Button("保存") {
+                        guard let target = validatedURL else { return }
+                        onSave(trimmedName, target.absoluteString)
+                    }
+                    .fontWeight(.semibold)
+                    .disabled(!isValid)
                 }
             }
         }
@@ -715,82 +667,51 @@ private struct AddCustomServiceView: View {
 
     private var inputCard: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SettingsCardHeader(
-                icon: "square.and.pencil",
-                iconColor: .blue,
-                title: "服务信息"
-            )
+            SettingsCardHeader(icon: "square.and.pencil", iconColor: .blue, title: "服务信息")
 
             VStack(alignment: .leading, spacing: 6) {
-                Text("名称")
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
-
+                Text("名称").font(.system(size: 12)).foregroundColor(.secondary)
                 TextField("例如：豆包", text: $name)
                     .textInputAutocapitalization(.never)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(Color.secondary.opacity(0.08))
-                    )
+                    .padding(.horizontal, 14).padding(.vertical, 12)
+                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.secondary.opacity(0.08)))
             }
-            .padding(.horizontal, ManageLayout.rowHorizontalPadding)
+            .padding(.horizontal, DSLayout.rowHorizontalPadding)
             .padding(.bottom, 14)
 
             VStack(alignment: .leading, spacing: 6) {
-                Text("网址")
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
-
+                Text("网址").font(.system(size: 12)).foregroundColor(.secondary)
                 TextField("https://...", text: $url)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .keyboardType(.URL)
-                    .onSubmit { if isValid { addService() } }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(Color.secondary.opacity(0.08))
-                    )
+                    .padding(.horizontal, 14).padding(.vertical, 12)
+                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.secondary.opacity(0.08)))
             }
-            .padding(.horizontal, ManageLayout.rowHorizontalPadding)
+            .padding(.horizontal, DSLayout.rowHorizontalPadding)
             .padding(.bottom, 16)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular, in: .rect(cornerRadius: ManageLayout.cardRadius))
+        .glassEffect(.regular, in: .rect(cornerRadius: DSLayout.cardRadius))
     }
 
     private func hintCard(_ hint: (text: String, color: Color)) -> some View {
         HStack(spacing: 8) {
-            Image(systemName: hint.color == .red
-                  ? "exclamationmark.triangle.fill"
-                  : hint.color == .orange
-                  ? "exclamationmark.circle.fill"
+            Image(systemName: hint.color == .red ? "exclamationmark.triangle.fill"
+                  : hint.color == .orange ? "exclamationmark.circle.fill"
                   : "info.circle.fill")
                 .font(.system(size: 12))
                 .foregroundColor(hint.color)
-
             Text(hint.text)
                 .font(.system(size: 12))
                 .foregroundColor(hint.color)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
-
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 16).padding(.vertical, 12)
         .glassEffect(.regular, in: .rect(cornerRadius: 16))
-    }
-
-    private func addService() {
-        guard let target = validatedURL else { return }
-        manager.addCustomService(
-            name: trimmedName,
-            url: target.absoluteString
-        )
-        dismiss()
     }
 }

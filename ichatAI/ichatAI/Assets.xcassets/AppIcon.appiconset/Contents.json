@@ -1,7 +1,7 @@
 {
   "images" : [
     {
-      "filename" : "ic_chatgpt_fill.png",
+      "filename" : "AI工具应用图标生成.png",
       "idiom" : "universal",
       "platform" : "ios",
       "size" : "1024x1024"
@@ -13,6 +13,7 @@
           "value" : "dark"
         }
       ],
+      "filename" : "AI工具应用图标生成1.png",
       "idiom" : "universal",
       "platform" : "ios",
       "size" : "1024x1024"

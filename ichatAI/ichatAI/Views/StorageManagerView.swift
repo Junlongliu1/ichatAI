@@ -4,7 +4,7 @@
 import SwiftUI
 
 struct StorageManagerView: View {
-    @StateObject private var cacheManager = WebCacheManager()
+    @State private var cacheManager = WebCacheManager()
     @State private var selectedTypes: Set<String> = []
     @State private var showClearConfirm = false
     @State private var clearResult: ClearResult?
@@ -17,7 +17,8 @@ struct StorageManagerView: View {
 
     // MARK: - 派生数据
     private var nonEmptyItems: [CacheItem] {
-        cacheManager.cacheItems.filter { $0.size > 0 }
+        // -1 表示驻留内存，属于“有内容”，不能当空处理
+        cacheManager.cacheItems.filter { $0.size != 0 }
     }
 
     private var emptyItems: [CacheItem] {
@@ -25,13 +26,13 @@ struct StorageManagerView: View {
     }
 
     private var totalSize: Int64 {
-        nonEmptyItems.reduce(0) { $0 + $1.size }
+        nonEmptyItems.reduce(0) { $0 + max(0, $1.size) }
     }
 
     private var selectedTotalSize: Int64 {
         nonEmptyItems
             .filter { selectedTypes.contains($0.type) }
-            .reduce(0) { $0 + $1.size }
+            .reduce(0) { $0 + max(0, $1.size) }
     }
 
     private var isAllSelected: Bool {
@@ -41,8 +42,8 @@ struct StorageManagerView: View {
     /// 名称 → 颜色 的稳定映射（列表和色带共用）
     private var colorMapping: [String: Color] {
         var mapping: [String: Color] = [:]
-        for (index, item) in nonEmptyItems.enumerated() {
-            mapping[item.id] = ChartColors.color(for: index)
+        for item in nonEmptyItems {
+            mapping[item.id] = ChartColors.stableColor(for: item.type)
         }
         return mapping
     }
@@ -99,12 +100,17 @@ struct StorageManagerView: View {
         } message: {
             Text("此操作不可撤销，确定要清理选中的缓存类型吗？")
         }
-        .alert(item: $clearResult) { result in
-            Alert(
-                title: Text(result.isSuccess ? "清理完成" : "清理失败"),
-                message: Text(result.message),
-                dismissButton: .default(Text("好的"))
-            )
+        .alert(
+            clearResult?.isSuccess == true ? "清理完成" : "清理失败",
+            isPresented: Binding(
+                get: { clearResult != nil },
+                set: { if !$0 { clearResult = nil } }
+            ),
+            presenting: clearResult
+        ) { _ in
+            Button("好的") { clearResult = nil }
+        } message: { result in
+            Text(result.message)
         }
         .task {
             cacheManager.fetchCacheSizes()
@@ -385,17 +391,5 @@ private struct CacheRow: View {
             )
         }
         .buttonStyle(.plain)
-    }
-}
-
-// MARK: - 图表配色
-enum ChartColors {
-    private static let palette: [Color] = [
-        .blue, .orange, .green, .red, .purple,
-        .pink, .yellow, .teal, .indigo, .mint
-    ]
-
-    static func color(for index: Int) -> Color {
-        palette[index % palette.count]
     }
 }

@@ -1,21 +1,22 @@
-//  ichatAIApp.swift
-
+// ichatAIApp.swift
 import SwiftUI
 
 @main
 struct ichatAIApp: App {
-
     init() {
-        // 启动时同步应用一次，避免从系统主题切到用户主题时出现闪烁
-        let raw = UserDefaults.standard.string(forKey: "appTheme")
-            ?? AppTheme.system.rawValue
-        let theme = AppTheme(rawValue: raw) ?? .system
-        ThemeApplier.apply(theme, animated: false)
+        // 应用启动前同步一次，避免闪屏
+        let theme = ThemeManager.shared.current
+        ThemeManager.shared.apply(animated: false)
+        AppLogInfo("[App] 启动，主题: \(theme.displayName)")
     }
 
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .task {
+                    // 注册场景监听
+                    ThemeManager.shared.startObservingScenes()
+                }
         }
     }
 }
